@@ -15,10 +15,13 @@ const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '::';
 
 
-fastify.register(AutoLoad, {
-  dir: join(__dirname, 'app'),
-  routeParams: true,
-});
+fastify.register( (apiInstance, opts, done) => {
+  apiInstance.register(AutoLoad, {
+    dir: join(__dirname, 'app'),
+    routeParams: true,
+  });
+    done();
+},{ prefix: '/api' });
 
 fastify.register(fastifyCors, {
   origin: '*',
@@ -28,6 +31,41 @@ fastify.register(FastifyMongoDB, {
 	forceClose: true,
 	url: MONGODB_URL,
 });
+
+
+fastify.addHook('onError', (request, reply, error, done) => {
+  console.log(error?.message || 'Some error occurred');
+  reply.status(500).send({ message: error?.message || 'Some error occurred' });
+  done();
+});
+
+fastify.addHook('onRequest', async (request, reply) => {
+	request.startTime = process.hrtime();
+});
+
+
+fastify.addHook('onSend', async (request, reply, payload) => {
+	if (request.startTime) {
+		const [seconds, nanoseconds] = process.hrtime(request.startTime);
+		const responseTimeMs = (seconds * 1000 + nanoseconds / 1e6).toFixed(2);
+
+		const { url, headers } = request;
+		const urlPath = new URL(url, `http://${headers.host}`).pathname;
+		const formattedPath = urlPath.split('/').filter(Boolean).join(' → ');
+
+		const isSuccess = reply.statusCode >= 200 && reply.statusCode < 300;
+		const status = isSuccess ? 'pass' : 'fail';
+
+		const apiMetric = {
+			endpointName: formattedPath,
+			timeRequired: parseFloat(responseTimeMs),
+			calledAt: new Date(),
+			status,
+			uid: request?.uid,
+		};
+		console.log(formattedPath);
+  }
+})
 
 // Run the server!
 fastify.listen({ port: PORT, host: HOST }).then(address => {

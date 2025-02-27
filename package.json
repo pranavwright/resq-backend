@@ -1,18 +1,22 @@
 {
-  "name": "node-express-api",
-  "description": "Simple api sample in Node",
+  "name": "post-disaster-management",
+  "description": "A backend node api for post disater management",
   "version": "1.0.0",
   "private": true,
-  "main": "index.js",
+  "main": "server.js",
   "type": "module",
   "scripts": {
-    "dev": "nodemon index.js",
-    "start": "node index.js"
+    "dev": "nodemon server.js",
+    "start": "node server.js"
   },
   "author": "Google LLC",
   "license": "Apache-2.0",
   "dependencies": {
-    "express": "^4.21.1"
+    "@fastify/autoload": "^6.1.0",
+    "@fastify/cors": "^11.0.0",
+    "@fastify/mongodb": "5.0.0",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

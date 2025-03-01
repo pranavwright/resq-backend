@@ -5,7 +5,7 @@
  * @param {*} done The string
 */
 
-import { customIdGenerator } from "../../utils/idGenerator";
+import { customIdGenerator } from "../../utils/idGenerator.js";
 
 
 

@@ -30,6 +30,7 @@ fastify.register(fastifyCors, {
 fastify.register(FastifyMongoDB, {
 	forceClose: true,
 	url: MONGODB_URL,
+	database: 'resQ'
 });
 
 

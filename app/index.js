@@ -5,12 +5,12 @@
  */
 
 const indexRoute = (fastify, options, done) => {
-    fastify.get('/', (req, replay) => {
+    fastify.get('/', (req, reply) => {
         try {
-            replay.status(200).send({ message: "Hello World" })
+            reply.status(200).send({ message: "Hello World" })
         } catch (error) {
             console.log("Error In Index Route", error);
-            replay.status(500).send({ message: "Internal Server Error" })
+            reply.status(500).send({ message: "Internal Server Error" })
         }
     })
     done();

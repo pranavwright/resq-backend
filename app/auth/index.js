@@ -42,7 +42,7 @@ const authRoute = (fastify, options, done) => {
             if (user) {
                 await fastify.mongo.db.collection('users').updateOne({ phoneNumber, disaterId }, { $push: { roles: role } });
             } else {
-                await fastify.mongo.db.collection('users').insertOne({ _id: customIdGeneratorr("user"), roles: { $push: [role] }, phoneNumber, name, disaterId });
+                await fastify.mongo.db.collection('users').insertOne({ _id: customIdGenerator("user"), roles: { $push: [role] }, phoneNumber, name, disaterId });
             }
             reply.status(200).send({ message: "User created successfully" });
 

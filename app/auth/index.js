@@ -1,10 +1,11 @@
-import { customIdGenerator } from "../../utils/idGenerator";
+
 /**
  * @param {import("fastify").FastifyInstance} fastify The date
  * @param {import("fastify").FastifyPluginOptions} options The string
  * @param {*} done The string
- */
+*/
 
+import { customIdGenerator } from "../../utils/idGenerator";
 
 
 

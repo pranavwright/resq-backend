@@ -15,13 +15,10 @@ const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '::';
 
 
-fastify.register( (apiInstance, opts, done) => {
-  apiInstance.register(AutoLoad, {
-    dir: join(__dirname, 'app'),
-    routeParams: true,
+fastify.register(AutoLoad, {
+	dir: join(__dirname, 'app'),
+	routeParams: true,
   });
-    done();
-},{ prefix: '/api' });
 
 fastify.register(fastifyCors, {
   origin: '*',

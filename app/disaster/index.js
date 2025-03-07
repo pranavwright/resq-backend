@@ -27,10 +27,11 @@ const disasterRoute = (fastify, options, done) => {
         description,
         location,
         startDate,
-        endDate,
-        status,
+        endDate=new Date(),
+        status = "active",
         state,
         district,
+        severity,
       } = req.body;
       if (_id) {
         await fastify.mongo.db
@@ -43,7 +44,8 @@ const disasterRoute = (fastify, options, done) => {
           !location ||
           !startDate ||
           !state ||
-          !district
+          !district ||
+          !severity
         ) {
           return reply.status(400).send({ message: "All fields are required" });
         }
@@ -56,6 +58,7 @@ const disasterRoute = (fastify, options, done) => {
           status: "active",
           state,
           district,
+          severity,
         });
       }
       reply.status(200).send({ message: "Disaster created/updated" });

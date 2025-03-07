@@ -4,3 +4,4 @@
 .env
 /.vscode
 yarn.lock
+service-account.json

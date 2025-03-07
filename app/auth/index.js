@@ -8,19 +8,27 @@ import {
   authenticatedUser,
   isUserAllowed,
 } from "../../middleware/authMiddleware.js";
+import { uploadProfileImage } from "../../utils/cloudStorage.js";
 import { customIdGenerator } from "../../utils/idGenerator.js";
-
 
 const authRoute = (fastify, options, done) => {
   const isAuthUser = {
     preHandler: [(req, reply) => authenticatedUser(fastify, req, reply)],
   };
-  const isSuperAdmin = {
+  const isRegisterAdmin = {
     preHandler: [
-      (req, reply) => isUserAllowed(fastify, req, reply, ["superAdmin"]),
+      (req, reply) =>
+        isUserAllowed(fastify, req, reply, [
+          "superAdmin",
+          "admin",
+          "campAdmin",
+          "stat",
+          "kas",
+          "collectionPointAdmin",
+        ]),
     ],
   };
-  fastify.post("/register", isSuperAdmin, async (req, reply) => {
+  fastify.post("/register", isRegisterAdmin, async (req, reply) => {
     try {
       const {
         role: roles,
@@ -109,7 +117,7 @@ const authRoute = (fastify, options, done) => {
       return reply.status(500).send({ message: "Internal Server Error" });
     }
   });
-  fastify.post("/checkUser", async (req, reply) => {
+  fastify.post("/checkUser", isAuthUser, async (req, reply) => {
     try {
       const { phoneNumber } = req.body;
       if (!phoneNumber) {
@@ -157,7 +165,11 @@ const authRoute = (fastify, options, done) => {
 
   fastify.put("/updateUser", isAuthUser, async (req, reply) => {
     try {
-      const { phoneNumber, name, photoUrl } = req.body;
+      const { phoneNumber, name, _id } = req.body;
+      const file = req.raw.files?.file;
+      if(!file) {
+        return reply.status(400).send({ message: "Image is required" });
+      }
       if (!phoneNumber || !name) {
         reply
           .status(400)
@@ -169,10 +181,15 @@ const authRoute = (fastify, options, done) => {
       if (!user) {
         return reply.status(400).send({ message: "User not found" });
       }
-      await fastify.mongo.db
-        .collection("users")
-        .updateOne({ phoneNumber }, { $set: { name, photoUrl } });
-      reply.status(200).send({ message: "User updated successfully" });
+      const { success, message, url } = await uploadProfileImage(file, _id);
+      if (!success) {
+        await fastify.mongo.db
+          .collection("users")
+          .updateOne({ phoneNumber }, { $set: { name, photoUrl: url } });
+        reply.status(200).send({ message: "User updated successfully" });
+      } else {
+        new Error("Failed to upload image");
+      }
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }

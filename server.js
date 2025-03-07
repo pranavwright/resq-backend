@@ -30,6 +30,11 @@ fastify.register(FastifyMongoDB, {
 	database: 'resQ'
 });
 
+fastify.register(fastifyMultipart, {
+	limits: { fileSize: 50 * 1024 * 1024 },
+  });
+  
+
 
 fastify.addHook('onError', (request, reply, error, done) => {
   console.log(error?.message || 'Some error occurred');

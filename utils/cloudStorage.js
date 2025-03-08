@@ -3,6 +3,13 @@ import fs from "fs";
 import path from "path";
 import sharp from "sharp"; 
 
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+
 const storage = new Storage({
   keyFilename: path.join(__dirname, "../service-account.json"),
 });

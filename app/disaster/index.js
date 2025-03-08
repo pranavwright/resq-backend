@@ -7,8 +7,8 @@
 import {
   authenticatedUser,
   isUserAllowed,
-} from "../../middleware/authMiddleware";
-import { customIdGenerator } from "../../utils/idGenerator";
+} from "../../middleware/authMiddleware.js";
+import { customIdGenerator } from "../../utils/idGenerator.js";
 
 const disasterRoute = (fastify, options, done) => {
   const isAuthUser = {
@@ -66,4 +66,6 @@ const disasterRoute = (fastify, options, done) => {
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
+  done()
 };
+export default disasterRoute;

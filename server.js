@@ -6,6 +6,7 @@ import { dirname, join } from 'path';
 import { MONGODB_URL } from './configs/index.js';
 import FastifyMongoDB from '@fastify/mongodb';
 import 'dotenv/config'
+import fastifyMultipart from '@fastify/multipart';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

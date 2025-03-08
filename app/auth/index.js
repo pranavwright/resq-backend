@@ -10,7 +10,18 @@ import {
 } from "../../middleware/authMiddleware.js";
 import { uploadProfileImage } from "../../utils/cloudStorage.js";
 import { customIdGenerator } from "../../utils/idGenerator.js";
+import admin from "firebase-admin";
+import path from "path";
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const serviceAccount = path.join(__dirname, "../../resqhub-wright-firebase-adminsdk.json")
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 const authRoute = (fastify, options, done) => {
   const isAuthUser = {
     preHandler: [(req, reply) => authenticatedUser(fastify, req, reply)],
@@ -117,7 +128,7 @@ const authRoute = (fastify, options, done) => {
       return reply.status(500).send({ message: "Internal Server Error" });
     }
   });
-  fastify.post("/checkUser", isAuthUser, async (req, reply) => {
+  fastify.post("/checkPhoneNumber", isAuthUser, async (req, reply) => {
     try {
       const { phoneNumber } = req.body;
       if (!phoneNumber) {

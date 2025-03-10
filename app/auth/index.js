@@ -18,7 +18,7 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const serviceAccount = path.join(__dirname, "../../resqhub-wright-firebase-adminsdk.json")
+const serviceAccount = path.join(__dirname, "../../service-account.json")
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -128,7 +128,10 @@ const authRoute = (fastify, options, done) => {
       return reply.status(500).send({ message: "Internal Server Error" });
     }
   });
-  fastify.post("/checkPhoneNumber", isAuthUser, async (req, reply) => {
+
+
+
+  fastify.post("/checkPhoneNumber", async (req, reply) => {
     try {
       const { phoneNumber } = req.body;
       if (!phoneNumber) {
@@ -140,7 +143,9 @@ const authRoute = (fastify, options, done) => {
       if (!checkuser) {
         reply.status(400).send({ message: "User not found" });
       }
-      reply.status(200).send({ message: "User found" });
+      console.log(phoneNumber);
+      
+      reply.status(200).send({ message: "User found", success: true });
     } catch (error) {
       console.log("Error In Login Route", error);
       reply.status(500).send({ message: "Internal Server Error" });
@@ -174,9 +179,32 @@ const authRoute = (fastify, options, done) => {
     }
   });
 
+
+
+
+  fastify.post('/otpSent', async (req, reply) => {
+    try {
+      const {timestamp, phoneNumber, verificationId} =req.body;
+
+
+      await fastify.mongo.db.collection('opt').deleteone({phoneNumber});
+      await fastify.mongo.db.collection('otp').insertOne({
+        timestamp: new Date(timestamp),
+        phoneNumber,
+        _id: customIdGenerator("OTP"),
+        verificationId
+      })
+      reply.sent("OTP sent successfully")
+    } catch (error) {
+      return reply
+      .status(400)
+      .send({ message: "Invalid Firebase Token", error });
+    }
+  })
+
   fastify.put("/updateUser", isAuthUser, async (req, reply) => {
     try {
-      const { phoneNumber, name, _id } = req.body;
+      const { phoneNumber, emailId, _id } = req.body;
       const file = req.raw.files?.file;
       if(!file) {
         return reply.status(400).send({ message: "Image is required" });
@@ -193,10 +221,10 @@ const authRoute = (fastify, options, done) => {
         return reply.status(400).send({ message: "User not found" });
       }
       const { success, message, url } = await uploadProfileImage(file, _id);
-      if (!success) {
+      if (success) {
         await fastify.mongo.db
           .collection("users")
-          .updateOne({ phoneNumber }, { $set: { name, photoUrl: url } });
+          .updateOne({ phoneNumber }, { $set: { name, photoUrl: url, emailId } });
         reply.status(200).send({ message: "User updated successfully" });
       } else {
         new Error("Failed to upload image");

@@ -15,6 +15,10 @@ const fastify = Fastify({ logger: true });
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || '::';
 
+fastify.register(fastifyMultipart, {
+    limits: { fileSize: 50 * 1024 * 1024 },
+	attachFieldsToBody: "keyValues",
+});
 
 fastify.register(AutoLoad, {
 	dir: join(__dirname, 'app'),
@@ -30,11 +34,6 @@ fastify.register(FastifyMongoDB, {
 	url: MONGODB_URL,
 	database: 'resQ'
 });
-
-fastify.register(fastifyMultipart, {
-	limits: { fileSize: 50 * 1024 * 1024 },
-  });
-  
 
 
 fastify.addHook('onError', (request, reply, error, done) => {
@@ -70,6 +69,10 @@ fastify.addHook('onSend', async (request, reply, payload) => {
 		console.log(formattedPath);
   }
 })
+
+fastify.addHook('onClose', async (instance) => {
+	await instance.mongo.client.close();
+  }); 
 
 // Run the server!
 fastify.listen({ port: PORT, host: HOST }).then(address => {

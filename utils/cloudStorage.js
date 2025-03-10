@@ -14,53 +14,49 @@ const storage = new Storage({
   keyFilename: path.join(__dirname, "../service-account.json"),
 });
 
-export const uploadProfileImage = async (file, fileName) => {
+export const uploadProfileImage = async (fileBuffer, fileName) => { // Accept fileBuffer
   try {
-    const bucket = storage.bucket("resq_user_images");
-    const tempFilePath = path.join(__dirname, "temp", fileName);
+      const bucket = storage.bucket("resq_user_images");
+      const tempFilePath = path.join(__dirname, "temp", fileName);
 
-    await new Promise((resolve, reject) => {
-      const writeStream = fs.createWriteStream(tempFilePath);
-      file.pipe(writeStream);
-      writeStream.on("finish", resolve);
-      writeStream.on("error", reject);
-    });
+      // Write the Buffer to the temporary file
+      fs.writeFileSync(tempFilePath.concat('.jpeg'), fileBuffer);
 
-    const resizedImageBuffer = await sharp(tempFilePath)
-      .resize(600, 300)
-      .toBuffer();
+      const resizedImageBuffer = await sharp(tempFilePath.concat('.jpeg'))
+          .resize(600, 800)
+          .toBuffer();
 
-    const blob = bucket.file(fileName);
-    const blobStream = blob.createWriteStream({
-      resumable: false,
-      metadata: {
-        contentType: "image/jpeg", 
-      },
-    });
-
-    return new Promise((resolve, reject) => {
-      blobStream.on("finish", () => {
-        fs.unlinkSync(tempFilePath); 
-        resolve({
-          success: true,
-          message: "Image uploaded successfully",
-          url: `https://storage.googleapis.com/${bucket.name}/${fileName}`,
-        });
+      const blob = bucket.file(fileName);
+      const blobStream = blob.createWriteStream({
+          resumable: false,
+          metadata: {
+              contentType: "image/jpeg",
+          },
       });
 
-      blobStream.on("error", (err) => {
-        console.error(err);
-        reject({
-          success: false,
-          message: "Failed to upload image",
-        });
-      });
+      return new Promise((resolve, reject) => {
+          blobStream.on("finish", () => {
+              fs.unlinkSync(tempFilePath.concat('.jpeg'));
+              resolve({
+                  success: true,
+                  message: "Image uploaded successfully",
+                  url: `https://storage.cloud.google.com/${bucket.name}/${fileName}`,
+              });
+          });
 
-      blobStream.end(resizedImageBuffer); 
-    });
+          blobStream.on("error", (err) => {
+              console.error(err);
+              reject({
+                  success: false,
+                  message: "Failed to upload image",
+              });
+          });
+
+          blobStream.end(resizedImageBuffer);
+      });
   } catch (error) {
-    console.error(error);
-    throw new Error("An error occurred while uploading the image.");
+      console.error(error);
+      throw new Error("An error occurred while uploading the image.");
   }
 };
 

@@ -15,7 +15,7 @@ export const authenticatedUser = async (fastify, req, reply) => {
         }
 
         const { phoneNumber, _id } = decodedToken;
-        const user = await fastify.mongo.db.collection('users').findOne({ phoneNumber, _id });
+        const user = await fastify.mongo.db.collection('users').findOne({ _id });
         
         if (!user) {
             throw new Error('User not found');

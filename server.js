@@ -12,7 +12,7 @@ import fastifyJwt from "@fastify/jwt";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const fastify = Fastify({ logger: true });
+const fastify = Fastify({ logger: false });
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || "::";
 

@@ -19,6 +19,12 @@ const disasterRoute = (fastify, options, done) => {
       (req, reply) => isUserAllowed(fastify, req, reply, ["superAdmin"]),
     ],
   };
+  const isAdmin = {
+    preHandler: [
+      (req, reply) =>
+        isUserAllowed(fastify, req, reply, ["superAdmin", "admin"]),
+    ],
+  };
   fastify.post("/disaster", isSuperAdmin, async (req, reply) => {
     try {
       const {
@@ -66,6 +72,70 @@ const disasterRoute = (fastify, options, done) => {
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
+
+  fastify.post("/camp", isAdmin, async (req, reply) => {
+    try {
+      const {disasterId, location, contact, capacity, campAdmin, families, _id} = req.body;
+      if (_id) {
+        await fastify.mongo.db.collection("camps").updateOne(
+          { _id },
+          {
+            $set: {
+              location,
+              contact,
+              capacity,
+              campAdmin,
+              families,
+            },
+          }
+        );
+      }else{
+        await fastify.mongo.db.collection("camps").insertOne({
+          _id: customIdGenerator("CMPT"),
+          disasterId,
+          location,
+          contact,
+          capacity,
+          campAdmin,
+          families,
+        });
+      }
+
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+  fastify.post("/collectionPoint", isAdmin, async (req, reply) => {
+    try {
+      const {disasterId, location, contact, capacity, campAdmin, families, _id} = req.body;
+      if (_id) {
+        await fastify.mongo.db.collection("collectionPoints").updateOne(
+          { _id },
+          {
+            $set: {
+              location,
+              contact,
+              capacity,
+              campAdmin,
+              families,
+            },
+          }
+        );
+      }else{
+        await fastify.mongo.db.collection("collectionPoints").insertOne({
+          _id: customIdGenerator("COPT"),
+          disasterId,
+          location,
+          contact,
+          capacity,
+          campAdmin,
+          families,
+        });
+      }
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  })
   done()
 };
 export default disasterRoute;

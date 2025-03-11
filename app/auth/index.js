@@ -142,12 +142,10 @@ const authRoute = (fastify, options, done) => {
       const numberOnly = phoneNumber.slice(3, phoneNumber.length);
       const checkuser = await fastify.mongo.db
         .collection("users")
-        .findOne({ phoneNumber: RegExp(`${numberOnly}`,"i") }, { projection: { phoneNumber: 1 } });
+        .findOne({ phoneNumber: `${numberOnly}` }, { projection: { phoneNumber: 1 } });
       if (!checkuser) {
         reply.status(400).send({ message: "User not found" });
       }
-      console.log(phoneNumber);
-      
       reply.status(200).send({ message: "User found", success: true });
     } catch (error) {
       console.log("Error In Login Route", error);
@@ -166,7 +164,7 @@ const authRoute = (fastify, options, done) => {
       
       const user = await fastify.mongo.db
         .collection("users")
-        .findOne({ phoneNumber: RegExp(`${numberOnly}`,"i") });
+        .findOne({ phoneNumber: `${numberOnly}` });
 
       const jwtToken = fastify.jwt.sign({
         phoneNumber: decodedToken.phone_number,
@@ -210,27 +208,26 @@ const authRoute = (fastify, options, done) => {
 
   fastify.put("/updateUser", isAuthUser, async (req, reply) => {
     try {
-      const { phoneNumber, emailId, _id } = req.body;
-      const file = req.raw.files?.file;
+      const {email:emailId, uid , photoUrl:file} = req.body;
       if(!file) {
         return reply.status(400).send({ message: "Image is required" });
       }
-      if (!phoneNumber || !name) {
+      if (!emailId) {
         reply
           .status(400)
           .send({ message: "Phone number and name is required" });
       }
       const user = await fastify.mongo.db
         .collection("users")
-        .findOne({ phoneNumber });
+        .findOne({ _id:uid });
       if (!user) {
         return reply.status(400).send({ message: "User not found" });
       }
-      const { success, message, url } = await uploadProfileImage(file, _id);
+      const { success, message, url } = await uploadProfileImage(file, uid);
       if (success) {
         await fastify.mongo.db
           .collection("users")
-          .updateOne({ phoneNumber }, { $set: { name, photoUrl: url, emailId } });
+          .updateOne({ _id: uid }, { $set: { photoUrl: url, emailId } });
         reply.status(200).send({ message: "User updated successfully" });
       } else {
         new Error("Failed to upload image");

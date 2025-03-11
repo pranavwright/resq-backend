@@ -26,7 +26,7 @@ export const authenticatedUser = async (fastify, req, reply) => {
             returnParam = req.query;
         }
 
-        returnParam._id = user._id;
+        returnParam.uid = user._id;
 
         return user;
     } catch (error) {

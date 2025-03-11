@@ -47,6 +47,7 @@ const authRoute = (fastify, options, done) => {
         name,
         disasterId,
         assignPlace,
+        uid
       } = req.body;
 
       let role = roles;
@@ -84,7 +85,7 @@ const authRoute = (fastify, options, done) => {
             $set: {
               roles: role,
               disasterId,
-              assignPlace,
+              ...(assignPlace && {assignPlace}),
             },
             $push: {
               pastRoles: {
@@ -107,7 +108,7 @@ const authRoute = (fastify, options, done) => {
           { phoneNumber, disasterId },
           {
             $addToSet: { roles: { $each: role } },
-            $set: { assignPlace },
+            $set: { ...(assignPlace && {assignPlace}) },
           }
         );
       } else {
@@ -119,6 +120,7 @@ const authRoute = (fastify, options, done) => {
           disasterId,
           assignPlace,
           pastRoles: [],
+          createdBy: uid,
         });
       }
 
@@ -137,9 +139,10 @@ const authRoute = (fastify, options, done) => {
       if (!phoneNumber) {
         reply.status(400).send({ message: "Phone number is required" });
       }
+      const numberOnly = phoneNumber.slice(3, phoneNumber.length);
       const checkuser = await fastify.mongo.db
         .collection("users")
-        .findOne({ phoneNumber }, { projection: { phoneNumber: 1 } });
+        .findOne({ phoneNumber: RegExp(`${numberOnly}`,"i") }, { projection: { phoneNumber: 1 } });
       if (!checkuser) {
         reply.status(400).send({ message: "User not found" });
       }
@@ -159,15 +162,18 @@ const authRoute = (fastify, options, done) => {
       if (!decodedToken.uid || !decodedToken.phone_number) {
         return reply.status(400).send({ message: "Invalid Firebase Token" });
       }
+      const numberOnly = decodedToken.phone_number.slice(3, decodedToken.phone_number.length);
+      
       const user = await fastify.mongo.db
         .collection("users")
-        .findOne({ phoneNumber: decodedToken.phone_number });
+        .findOne({ phoneNumber: RegExp(`${numberOnly}`,"i") });
 
       const jwtToken = fastify.jwt.sign({
         phoneNumber: decodedToken.phone_number,
         _id: user._id,
       });
-      return reply.send({
+      
+      return reply.status(200).send({
         jwtToken,
         roles: user.roles,
         photoUrl: user.photoUrl,

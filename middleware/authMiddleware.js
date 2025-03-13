@@ -27,6 +27,7 @@ export const authenticatedUser = async (fastify, req, reply) => {
         }
 
         returnParam.uid = user._id;
+        returnParam.disasterId = user.disasterId;
 
         return user;
     } catch (error) {

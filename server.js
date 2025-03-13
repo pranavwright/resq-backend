@@ -33,7 +33,7 @@ fastify.register(fastifyCors, {
 fastify.register(fastifyJwt, {
   secret: process.env.JWT_SECRET || "Secret",
   sign: {
-    expiresIn: "1m",
+    expiresIn: "30d",
   },
 });
 
@@ -60,7 +60,7 @@ fastify.addHook("onSend", async (request, reply, payload) => {
 
     const { url, headers } = request;
     const urlPath = new URL(url, `http://${headers.host}`).pathname;
-    const formattedPath = urlPath.split("/").filter(Boolean).join(" → ");
+    const formattedPath = urlPath.split("/");
 
     const isSuccess = reply.statusCode >= 200 && reply.statusCode < 300;
     const status = isSuccess ? "pass" : "fail";
@@ -70,9 +70,11 @@ fastify.addHook("onSend", async (request, reply, payload) => {
       timeRequired: parseFloat(responseTimeMs),
       calledAt: new Date(),
       status,
+      statusCode: reply.statusCode,
       uid: request?.uid,
     };
-    console.log(formattedPath);
+    fastify.mongo.db.collection("apiMetrics").insertOne(apiMetric);
+    console.log(formattedPath, responseTime, reply.statusCode);
   }
 });
 

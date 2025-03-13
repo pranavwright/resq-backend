@@ -193,9 +193,9 @@ const authRoute = (fastify, options, done) => {
 
       await fastify.mongo.db.collection('opt').deleteone({phoneNumber});
       await fastify.mongo.db.collection('otp').insertOne({
+        _id: customIdGenerator("OTP"),
         timestamp: new Date(timestamp),
         phoneNumber,
-        _id: customIdGenerator("OTP"),
         verificationId
       })
       reply.sent("OTP sent successfully")

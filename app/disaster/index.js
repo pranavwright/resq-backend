@@ -38,11 +38,21 @@ const disasterRoute = (fastify, options, done) => {
         state,
         district,
         severity,
+        uid
       } = req.body;
       if (_id) {
         await fastify.mongo.db
           .collection("disasters")
-          .updateOne({ _id }, { $set: { endDate, status } });
+          .updateOne({ _id }, { $set: { 
+            ...(endDate && {endDate}),
+            ...(status && {status}),
+            ...(name && {name}),
+            ...(description && {description}),
+            ...(location && {location}),
+            ...(severity&&{severity}),
+            updatedBy: uid,
+            updatedAt: new Date(),
+           } });
       } else {
         if (
           !name ||
@@ -65,6 +75,8 @@ const disasterRoute = (fastify, options, done) => {
           state,
           district,
           severity,
+          createdBy: uid,
+          createdAt: new Date(),
         });
       }
       reply.status(200).send({ message: "Disaster created/updated" });
@@ -75,17 +87,18 @@ const disasterRoute = (fastify, options, done) => {
 
   fastify.post("/camp", isAdmin, async (req, reply) => {
     try {
-      const {disasterId, location, contact, capacity, campAdmin, families, _id} = req.body;
+      const {disasterId, location, contact, capacity, campAdmin, _id, uid} = req.body;
       if (_id) {
         await fastify.mongo.db.collection("camps").updateOne(
-          { _id },
+          { _id, disasterId },
           {
             $set: {
-              location,
-              contact,
-              capacity,
-              campAdmin,
-              families,
+              ...(location && {location}),
+              ...(contact && {contact}),
+              ...(capacity && {capacity}),
+              ...(campAdmin && {campAdmin}),
+              updatedAt: new Date(),
+              updatedBy: uid,
             },
           }
         );
@@ -97,9 +110,13 @@ const disasterRoute = (fastify, options, done) => {
           contact,
           capacity,
           campAdmin,
-          families,
+          disasterId,
+          createdBy: uid,
+          createdAt: new Date(),
         });
       }
+
+      reply.status(200).send({ message: "Camp created/updated", success: true });
 
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
@@ -107,17 +124,17 @@ const disasterRoute = (fastify, options, done) => {
   });
   fastify.post("/collectionPoint", isAdmin, async (req, reply) => {
     try {
-      const {disasterId, location, contact, capacity, campAdmin, families, _id} = req.body;
+      const {disasterId, location, contact, collectionAdmin, _id,uid} = req.body;
       if (_id) {
         await fastify.mongo.db.collection("collectionPoints").updateOne(
-          { _id },
+          { _id , disasterId},
           {
             $set: {
-              location,
-              contact,
-              capacity,
-              campAdmin,
-              families,
+              ...(location && {location}),
+              ...(contact && {contact}),
+              ...(collectionAdmin && {collectionAdmin}),
+              updatedAt: new Date(),
+              updatedBy: uid,
             },
           }
         );
@@ -126,12 +143,14 @@ const disasterRoute = (fastify, options, done) => {
           _id: customIdGenerator("COPT"),
           disasterId,
           location,
-          contact,
           capacity,
-          campAdmin,
-          families,
+          collectionAdmin,
+          createdBy: uid,
+          disasterId,
+          createdAt: new Date(),
         });
       }
+      reply.status(200).send({ message: "Collection Point created/updated", success: true });
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }
@@ -139,3 +158,121 @@ const disasterRoute = (fastify, options, done) => {
   done()
 };
 export default disasterRoute;
+
+
+
+
+
+
+
+const familicollection ={
+  _id: "FAM -gsgcjsd",
+  disasterId: "DIS -gsgcjsd",
+  location: "location",
+  capacity: "",
+  rationCardNo:"",
+  rationCardCategory:"",
+  houseName:"",
+  currentRecdience:",",
+}
+
+const membersCollection={
+  _id: "MEM -gsgcjsd",
+  familyId: "FAM -gsgcjsd",
+  name: "name",
+  age: "",
+
+}
+
+const roomsCollection={
+  _id: "ROOM -gsgcjsd",
+  location: "location",
+  state: "",
+  district: "",
+  houseNo: "",
+  source: "",
+  rentAmount: "",
+  type: "",
+}
+
+const campCollection={
+  _id: "CAMP -gsgcjsd",
+  disasterId: "DIS -gsgcjsd",
+  location: "location",
+  contact: "",
+  capacity: "",
+  campAdmin: "",
+  type: "",
+}
+
+const collectionPointCollection={
+  _id: "COPT -gsgcjsd",
+  disasterId: "DIS -gsgcjsd",
+  location: "location",
+  contact: "",
+  collectionAdmin: "",
+  families: "",
+}
+const collectionPointRoomCollection={
+  _id:"",
+  disasterId: "DIS -gsgcjsd",
+  roomId:"A11",
+  collectionPointId:"",
+  ItemId:""
+}
+
+
+const donationRequestCollection={
+  _id:"",
+  disasterId: "DIS -gsgcjsd",
+  items: [
+    {
+      qty:123,
+      itemId: "ITEM -gsgcjsd",
+    }
+  ],
+  deliveryTime: new Date(),
+  status:"pending"
+}
+
+const inventoryCollection={
+  _id: "ITEM -gsgcjsd",
+  name: "name",
+  unit: "",
+  quantity:"",
+  category: "",
+  description: "",
+}
+
+
+const campRequestCollection={
+  _id:"",
+  disasterId: "DIS -gsgcjsd",
+  items: [
+    {
+      qty:123,
+      itemId: "ITEM -gsgcjsd",
+    }
+  ],
+  pickupTime: new Date(),
+  status:"pending"
+}
+
+const roomCollection={
+  _id:"",
+  disasterId:"",
+  location: "google map loaction",
+  state:"we",
+  district:"we",
+  houseNo:"we",
+  source:"pravasi/rent/pwd",
+  type: "perm/temp",
+  isVerified:false,
+  rentAmount:"",
+  remarks:"",
+  readyToOccupy: true ,
+  familiId:"",
+  lastDate: new Date()
+}
+
+const loanCollection ={}

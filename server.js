@@ -60,7 +60,7 @@ fastify.addHook("onSend", async (request, reply, payload) => {
 
     const { url, headers } = request;
     const urlPath = new URL(url, `http://${headers.host}`).pathname;
-    const formattedPath = urlPath.split("/");
+    const formattedPath = urlPath.split("/").filter(Boolean).join(" → ");
 
     const isSuccess = reply.statusCode >= 200 && reply.statusCode < 300;
     const status = isSuccess ? "pass" : "fail";
@@ -68,13 +68,13 @@ fastify.addHook("onSend", async (request, reply, payload) => {
     const apiMetric = {
       endpointName: formattedPath,
       timeRequired: parseFloat(responseTimeMs),
+      statusCode: reply.statusCode,
       calledAt: new Date(),
       status,
-      statusCode: reply.statusCode,
       uid: request?.uid,
     };
     fastify.mongo.db.collection("apiMetrics").insertOne(apiMetric);
-    console.log(formattedPath, responseTimeMs, reply.statusCode);
+    console.log(JSON.stringify(apiMetric, null, 2));
   }
 });
 

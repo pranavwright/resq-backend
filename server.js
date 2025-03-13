@@ -74,7 +74,7 @@ fastify.addHook("onSend", async (request, reply, payload) => {
       uid: request?.uid,
     };
     fastify.mongo.db.collection("apiMetrics").insertOne(apiMetric);
-    console.log(formattedPath, responseTime, reply.statusCode);
+    console.log(formattedPath, responseTimeMs, reply.statusCode);
   }
 });
 

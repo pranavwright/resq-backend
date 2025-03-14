@@ -12,13 +12,13 @@ import { uploadProfileImage } from "../../utils/cloudStorage.js";
 import { customIdGenerator } from "../../utils/idGenerator.js";
 import admin from "firebase-admin";
 import path from "path";
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { fileURLToPath } from "url";
+import { dirname } from "path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const serviceAccount = path.join(__dirname, "../../service-account.json")
+const serviceAccount = path.join(__dirname, "../../service-account.json");
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -47,7 +47,7 @@ const authRoute = (fastify, options, done) => {
         name,
         disasterId,
         assignPlace,
-        uid
+        uid,
       } = req.body;
 
       let role = roles;
@@ -85,7 +85,7 @@ const authRoute = (fastify, options, done) => {
             $set: {
               roles: role,
               disasterId,
-              ...(assignPlace && {assignPlace}),
+              ...(assignPlace && { assignPlace }),
             },
             $push: {
               pastRoles: {
@@ -108,7 +108,7 @@ const authRoute = (fastify, options, done) => {
           { phoneNumber, disasterId },
           {
             $addToSet: { roles: { $each: role } },
-            $set: { ...(assignPlace && {assignPlace}) },
+            $set: { ...(assignPlace && { assignPlace }) },
           }
         );
       } else {
@@ -131,8 +131,6 @@ const authRoute = (fastify, options, done) => {
     }
   });
 
-
-
   fastify.post("/checkPhoneNumber", async (req, reply) => {
     try {
       const { phoneNumber } = req.body;
@@ -142,7 +140,10 @@ const authRoute = (fastify, options, done) => {
       const numberOnly = phoneNumber.slice(3, phoneNumber.length);
       const checkuser = await fastify.mongo.db
         .collection("users")
-        .findOne({ phoneNumber: `${numberOnly}` }, { projection: { phoneNumber: 1 } });
+        .findOne(
+          { phoneNumber: `${numberOnly}` },
+          { projection: { phoneNumber: 1 } }
+        );
       if (!checkuser) {
         reply.status(400).send({ message: "User not found" });
       }
@@ -160,8 +161,11 @@ const authRoute = (fastify, options, done) => {
       if (!decodedToken.uid || !decodedToken.phone_number) {
         return reply.status(400).send({ message: "Invalid Firebase Token" });
       }
-      const numberOnly = decodedToken.phone_number.slice(3, decodedToken.phone_number.length);
-      
+      const numberOnly = decodedToken.phone_number.slice(
+        3,
+        decodedToken.phone_number.length
+      );
+
       const user = await fastify.mongo.db
         .collection("users")
         .findOne({ phoneNumber: `${numberOnly}` });
@@ -170,7 +174,7 @@ const authRoute = (fastify, options, done) => {
         phoneNumber: decodedToken.phone_number,
         _id: user._id,
       });
-      
+
       return reply.status(200).send({
         jwtToken,
         roles: user.roles,
@@ -183,33 +187,29 @@ const authRoute = (fastify, options, done) => {
     }
   });
 
-
-
-
-  fastify.post('/otpSent', async (req, reply) => {
+  fastify.post("/otpSent", async (req, reply) => {
     try {
-      const {timestamp, phoneNumber, verificationId} =req.body;
+      const { timestamp, phoneNumber, verificationId } = req.body;
 
-
-      await fastify.mongo.db.collection('opt').deleteone({phoneNumber});
-      await fastify.mongo.db.collection('otp').insertOne({
+      await fastify.mongo.db.collection("opt").deleteone({ phoneNumber });
+      await fastify.mongo.db.collection("otp").insertOne({
         _id: customIdGenerator("OTP"),
         timestamp: new Date(timestamp),
         phoneNumber,
-        verificationId
-      })
-      reply.sent("OTP sent successfully")
+        verificationId,
+      });
+      reply.sent("OTP sent successfully");
     } catch (error) {
       return reply
-      .status(400)
-      .send({ message: "Invalid Firebase Token", error });
+        .status(400)
+        .send({ message: "Invalid Firebase Token", error });
     }
-  })
+  });
 
   fastify.put("/updateUser", isAuthUser, async (req, reply) => {
     try {
-      const {email:emailId, uid , photoUrl:file} = req.body;
-      if(!file) {
+      const { email: emailId, uid, photoUrl: file } = req.body;
+      if (!file) {
         return reply.status(400).send({ message: "Image is required" });
       }
       if (!emailId) {
@@ -219,11 +219,29 @@ const authRoute = (fastify, options, done) => {
       }
       const user = await fastify.mongo.db
         .collection("users")
-        .findOne({ _id:uid });
+        .findOne({ _id: uid });
       if (!user) {
         return reply.status(400).send({ message: "User not found" });
       }
-      const { success, message, url } = await uploadProfileImage(file, uid);
+
+      let fileExtension = "jpg"; 
+      let fileData = file;
+
+      if (file.startsWith("data:image/")) {
+        const matches = file.match(/^data:image\/([a-zA-Z]+);base64,/);
+        if (matches && matches.length > 1) {
+          fileExtension = matches[1].toLowerCase();
+          fileData = file.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
+        }
+      }
+
+      const fileName = `${uid}.${fileExtension}`;
+
+      const { success, message, url } = await uploadProfileImage(
+        fileData,
+        fileName
+      );
+
       if (success) {
         await fastify.mongo.db
           .collection("users")

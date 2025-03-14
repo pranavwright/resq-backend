@@ -20,9 +20,9 @@ export const uploadProfileImage = async (fileBuffer, fileName) => { // Accept fi
       const tempFilePath = path.join(__dirname, "temp", fileName);
 
       // Write the Buffer to the temporary file
-      fs.writeFileSync(tempFilePath.concat('.jpeg'), fileBuffer);
+      fs.writeFileSync(tempFilePath, fileBuffer);
 
-      const resizedImageBuffer = await sharp(tempFilePath.concat('.jpeg'))
+      const resizedImageBuffer = await sharp(tempFilePath)
           .resize(600, 800)
           .toBuffer();
 
@@ -36,7 +36,7 @@ export const uploadProfileImage = async (fileBuffer, fileName) => { // Accept fi
 
       return new Promise((resolve, reject) => {
           blobStream.on("finish", () => {
-              fs.unlinkSync(tempFilePath.concat('.jpeg'));
+              fs.unlinkSync(tempFilePath);
               resolve({
                   success: true,
                   message: "Image uploaded successfully",

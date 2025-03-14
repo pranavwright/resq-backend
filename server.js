@@ -66,7 +66,7 @@ fastify.addHook("onSend", async (request, reply, payload) => {
     const status = isSuccess ? "pass" : "fail";
 
     const apiMetric = {
-      endpointName: formattedPath,
+      endpointName: urlPath,
       timeRequired: parseFloat(responseTimeMs),
       statusCode: reply.statusCode,
       calledAt: new Date(),

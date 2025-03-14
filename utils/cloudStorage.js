@@ -14,49 +14,79 @@ const storage = new Storage({
   keyFilename: path.join(__dirname, "../service-account.json"),
 });
 
-export const uploadProfileImage = async (fileBuffer, fileName) => { // Accept fileBuffer
+
+const tempDir = path.join(__dirname, "temp");
+if (!fs.existsSync(tempDir)) {
+  fs.mkdirSync(tempDir, { recursive: true });
+}
+
+
+
+export const uploadProfileImage = async (fileData, fileName) => {
+  let tempFilePath = null;
+  
   try {
-      const bucket = storage.bucket("resq_user_images");
-      const tempFilePath = path.join(__dirname, "temp", fileName);
+    const bucket = storage.bucket("resq_user_images");
+    tempFilePath = path.join(tempDir, fileName);
 
-      // Write the Buffer to the temporary file
-      fs.writeFileSync(tempFilePath, fileBuffer);
+    const imageBuffer = Buffer.from(fileData, "base64");
+    
+    fs.writeFileSync(tempFilePath, imageBuffer);
+    
+    let resizedImageBuffer;
+    try {
+      resizedImageBuffer = await sharp(tempFilePath)
+        .resize(600, 800, {
+          fit: sharp.fit.cover,
+          position: 'center'
+        })
+        .toBuffer();
+    } catch (sharpError) {
+      console.error("Sharp processing error:", sharpError);
+      resizedImageBuffer = imageBuffer;
+    }
 
-      const resizedImageBuffer = await sharp(tempFilePath)
-          .resize(600, 800)
-          .toBuffer();
+    const blob = bucket.file(fileName);
+    const blobStream = blob.createWriteStream({
+      resumable: false,
+      metadata: {
+        contentType: `image/${path.extname(fileName).substring(1)}`,
+      },
+    });
 
-      const blob = bucket.file(fileName);
-      const blobStream = blob.createWriteStream({
-          resumable: false,
-          metadata: {
-              contentType: "image/jpeg",
-          },
+    return new Promise((resolve, reject) => {
+      blobStream.on("finish", () => {
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath);
+        }
+        
+        const publicUrl = `https://storage.cloud.google.com/${bucket.name}/${fileName}`;
+        resolve({
+          success: true,
+          url: publicUrl,
+          message: "Image uploaded successfully"
+        });
       });
 
-      return new Promise((resolve, reject) => {
-          blobStream.on("finish", () => {
-              fs.unlinkSync(tempFilePath);
-              resolve({
-                  success: true,
-                  message: "Image uploaded successfully",
-                  url: `https://storage.cloud.google.com/${bucket.name}/${fileName}`,
-              });
-          });
-
-          blobStream.on("error", (err) => {
-              console.error(err);
-              reject({
-                  success: false,
-                  message: "Failed to upload image",
-              });
-          });
-
-          blobStream.end(resizedImageBuffer);
+      blobStream.on("error", (err) => {
+        console.error("Upload error:", err);
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+          fs.unlinkSync(tempFilePath);
+        }
+        reject({
+          success: false,
+          message: "Failed to upload image"
+        });
       });
+
+      blobStream.end(resizedImageBuffer);
+    });
   } catch (error) {
-      console.error(error);
-      throw new Error("An error occurred while uploading the image.");
+    console.error("General error in uploadProfileImage:", error);
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+    throw error;
   }
 };
 

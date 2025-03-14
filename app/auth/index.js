@@ -213,9 +213,7 @@ const authRoute = (fastify, options, done) => {
         return reply.status(400).send({ message: "Image is required" });
       }
       if (!emailId) {
-        reply
-          .status(400)
-          .send({ message: "Phone number and name is required" });
+        return reply.status(400).send({ message: "Email is required" });
       }
       const user = await fastify.mongo.db
         .collection("users")
@@ -223,35 +221,54 @@ const authRoute = (fastify, options, done) => {
       if (!user) {
         return reply.status(400).send({ message: "User not found" });
       }
-
+  
       let fileExtension = "jpg"; 
-      let fileData = file;
-
-      if (file.startsWith("data:image/")) {
-        const matches = file.match(/^data:image\/([a-zA-Z]+);base64,/);
-        if (matches && matches.length > 1) {
-          fileExtension = matches[1].toLowerCase();
-          fileData = file.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
+      let fileData = "";
+      
+      if (typeof file === 'string' && file.startsWith("data:image/")) {
+        const matches = file.match(/^data:image\/([a-zA-Z]+);base64,(.+)$/);
+        
+        if (!matches || matches.length !== 3) {
+          return reply.status(400).send({ message: "Invalid image format" });
         }
-      }
-
-      const fileName = `${uid}.${fileExtension}`;
-
-      const { success, message, url } = await uploadProfileImage(
-        fileData,
-        fileName
-      );
-
-      if (success) {
-        await fastify.mongo.db
-          .collection("users")
-          .updateOne({ _id: uid }, { $set: { photoUrl: url, emailId } });
-        reply.status(200).send({ message: "User updated successfully" });
+        
+        fileExtension = matches[1].toLowerCase();
+        fileData = matches[2]; 
+        
+        const supportedFormats = ['jpeg', 'jpg', 'png', 'webp', 'gif'];
+        if (!supportedFormats.includes(fileExtension)) {
+          return reply.status(400).send({ 
+            message: "Unsupported image format. Please use JPEG, PNG, WebP, or GIF." 
+          });
+        }
       } else {
-        new Error("Failed to upload image");
+        return reply.status(400).send({ message: "Invalid image data" });
+      }
+  
+      const fileName = `${uid}.${fileExtension}`;
+      
+      try {
+        const result = await uploadProfileImage(fileData, fileName);
+        
+        if (result.success) {
+          await fastify.mongo.db
+            .collection("users")
+            .updateOne({ _id: uid }, { $set: { photoUrl: result.url, emailId } });
+            
+          return reply.status(200).send({ 
+            message: "User updated successfully",
+            photoUrl: result.url
+          });
+        } else {
+          return reply.status(500).send({ message: result.message || "Failed to upload image" });
+        }
+      } catch (uploadError) {
+        console.error("Upload error:", uploadError);
+        return reply.status(500).send({ message: "Failed to process image" });
       }
     } catch (error) {
-      reply.status(500).send({ message: "Internal Server Error" });
+      console.error("Error updating user:", error);
+      return reply.status(500).send({ message: "Internal Server Error" });
     }
   });
 

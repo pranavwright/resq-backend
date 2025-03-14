@@ -213,7 +213,9 @@ const authRoute = (fastify, options, done) => {
         return reply.status(400).send({ message: "Image is required" });
       }
       if (!emailId) {
-        return reply.status(400).send({ message: "Email is required" });
+        reply
+          .status(400)
+          .send({ message: "Phone number and name is required" });
       }
       const user = await fastify.mongo.db
         .collection("users")
@@ -221,54 +223,38 @@ const authRoute = (fastify, options, done) => {
       if (!user) {
         return reply.status(400).send({ message: "User not found" });
       }
-  
-      let fileExtension = "jpg"; 
-      let fileData = "";
-      
+
+      // Extract file extension from base64 data
+      let fileExtension = "jpg"; // Default extension
+      let fileData = file;
+
       if (typeof file === 'string' && file.startsWith("data:image/")) {
-        const matches = file.match(/^data:image\/([a-zA-Z]+);base64,(.+)$/);
-        
-        if (!matches || matches.length !== 3) {
-          return reply.status(400).send({ message: "Invalid image format" });
+        const matches = file.match(/^data:image\/([a-zA-Z]+);base64,/);
+        if (matches && matches.length > 1) {
+          fileExtension = matches[1].toLowerCase();
+          fileData = file.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
         }
-        
-        fileExtension = matches[1].toLowerCase();
-        fileData = matches[2]; 
-        
-        const supportedFormats = ['jpeg', 'jpg', 'png', 'webp', 'gif'];
-        if (!supportedFormats.includes(fileExtension)) {
-          return reply.status(400).send({ 
-            message: "Unsupported image format. Please use JPEG, PNG, WebP, or GIF." 
-          });
-        }
-      } else {
-        return reply.status(400).send({ message: "Invalid image data" });
       }
-  
+
+      // Generate unique filename with extension
       const fileName = `${uid}.${fileExtension}`;
-      
-      try {
-        const result = await uploadProfileImage(fileData, fileName);
-        
-        if (result.success) {
-          await fastify.mongo.db
-            .collection("users")
-            .updateOne({ _id: uid }, { $set: { photoUrl: result.url, emailId } });
-            
-          return reply.status(200).send({ 
-            message: "User updated successfully",
-            photoUrl: result.url
-          });
-        } else {
-          return reply.status(500).send({ message: result.message || "Failed to upload image" });
-        }
-      } catch (uploadError) {
-        console.error("Upload error:", uploadError);
-        return reply.status(500).send({ message: "Failed to process image" });
+
+      // Upload the image with proper filename
+      const { success, message, url } = await uploadProfileImage(
+        fileData,
+        fileName
+      );
+
+      if (success) {
+        await fastify.mongo.db
+          .collection("users")
+          .updateOne({ _id: uid }, { $set: { photoUrl: url, emailId } });
+        reply.status(200).send({ message: "User updated successfully", photoUrl: url });
+      } else {
+        new Error("Failed to upload image");
       }
     } catch (error) {
-      console.error("Error updating user:", error);
-      return reply.status(500).send({ message: "Internal Server Error" });
+      reply.status(500).send({ message: "Internal Server Error" });
     }
   });
 

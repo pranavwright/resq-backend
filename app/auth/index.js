@@ -258,6 +258,21 @@ const authRoute = (fastify, options, done) => {
     }
   });
 
+  fastify.get("/getUser", isAuthUser, async (req, reply) => {
+    try {
+     const { uid } = req.query;
+      const user = await fastify.mongo.db
+        .collection("users")
+        .findOne({ _id: uid });
+      if (!user) {
+        return reply.status(400).send({ message: "User not found" });
+      }
+      return reply.status(200).send({ photoUrl: user.photoUrl, emailId: user.emailId, roles: user.roles , name: user.name});
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+
+    }
+  });
   done();
 };
 export default authRoute;

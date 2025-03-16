@@ -90,5 +90,6 @@ fastify
   })
   .catch((err) => {
     fastify.log.error(err);
+    console.error(err);
     process.exit(1);
   });

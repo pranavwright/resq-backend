@@ -11,7 +11,7 @@ import {
 import { uploadApkFile } from "../../utils/cloudStorage.js";
 import { customIdGenerator } from "../../utils/idGenerator.js";
 
-const familiRoute = (fastify, options, done) => {
+const settingsRoute = (fastify, options, done) => {
   const isAuthUser = {
     preHandler: [(req, reply) => authenticatedUser(fastify, req, reply)],
   };
@@ -80,3 +80,4 @@ const familiRoute = (fastify, options, done) => {
 
   done();
 };
+export default settingsRoute;

@@ -28,10 +28,11 @@ const settingsRoute = (fastify, options, done) => {
 
   fastify.post("/uploadApk", isAdmin, async (req, reply) => {
     try {
-      const { uid, file, version } = req.body;
+      const { uid, apkFile:file, version,appName = "resQ" } = req.body;
+      if (!file) throw new Error("APK file is required");
       const { success, message, url } = await uploadApkFile(
         file,
-        `${customIdGenerator()}.apk`
+        `${appName}.apk`
       );
       if (!success) throw new Error(message);
       const isExist = await fastify.mongo.db
@@ -55,7 +56,7 @@ const settingsRoute = (fastify, options, done) => {
         });
       reply.send({ success: true, message: "APK uploaded successfully" });
     } catch (error) {
-      reply.send({ success: false, message: error.message });
+      reply.status(500).send({ success: false, message: error.message });
     }
   });
 
@@ -74,7 +75,7 @@ const settingsRoute = (fastify, options, done) => {
       );
       reply.send({ success: true, apk });
     } catch (error) {
-      reply.send({ success: false, message: error.message });
+      reply.status(500).send({ success: false, message: error.message });
     }
   });
 

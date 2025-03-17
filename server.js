@@ -17,7 +17,7 @@ const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || "::";
 
 fastify.register(fastifyMultipart, {
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 150 * 1024 * 1024 },
   attachFieldsToBody: "keyValues",
 });
 

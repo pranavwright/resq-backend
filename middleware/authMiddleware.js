@@ -43,7 +43,10 @@ export const isUserAllowed = async (fastify, req, reply, allowedRoles) => {
             throw new Error('User not found');
         }
 
-        if (!allowedRoles.includes(user.roles)) {
+        const hasAllowedRole = user.roles.some(role => allowedRoles.includes(role));
+        
+        if (!hasAllowedRole) {
+            console.log(`Access denied: User roles [${user.roles}] not in allowed roles [${allowedRoles}]`);
             throw new Error('User not allowed');
         }
 

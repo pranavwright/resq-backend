@@ -90,18 +90,10 @@ export const uploadProfileImage = async (fileData, fileName) => {
   }
 };
 
-export const uploadApkFile = async (file, fileName) => {
+
+export const uploadApkFile = async (fileBuffer, fileName) => {
   try {
     const bucket = storage.bucket("resq_apk_files");
-    const tempFilePath = path.join(__dirname, "temp", fileName);
-
-    await new Promise((resolve, reject) => {
-      const writeStream = fs.createWriteStream(tempFilePath);
-      file.pipe(writeStream);
-      writeStream.on("finish", resolve);
-      writeStream.on("error", reject);
-    });
-
     const blob = bucket.file(fileName);
     const blobStream = blob.createWriteStream({
       resumable: false,
@@ -112,11 +104,10 @@ export const uploadApkFile = async (file, fileName) => {
 
     return new Promise((resolve, reject) => {
       blobStream.on("finish", () => {
-        fs.unlinkSync(tempFilePath); 
         resolve({
           success: true,
           message: "APK uploaded successfully",
-          url: `https://storage.googleapis.com/${bucket.name}/${fileName}`, 
+          url: `https://storage.cloud.google.com/${bucket.name}/${fileName}`,
         });
       });
 
@@ -128,10 +119,11 @@ export const uploadApkFile = async (file, fileName) => {
         });
       });
 
-      blobStream.end(); 
+      blobStream.end(fileBuffer); // Write the Buffer directly
     });
   } catch (error) {
     console.error(error);
     throw new Error("An error occurred while uploading the APK.");
   }
 };
+

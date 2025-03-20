@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 
- const customIdGenerator = async (id) => {
+ const customIdGenerator =  (id) => {
     // Get current date and time in YYYYMMDDHHMMSS format
     const timestamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
 

@@ -25,7 +25,7 @@ const disasterRoute = (fastify, options, done) => {
         isUserAllowed(fastify, req, reply, ["superAdmin", "admin"]),
     ],
   };
-  fastify.post("/disaster", isSuperAdmin, async (req, reply) => {
+  fastify.post("/postDisaster", isSuperAdmin, async (req, reply) => {
     try {
       const {
         _id,
@@ -38,9 +38,11 @@ const disasterRoute = (fastify, options, done) => {
         state,
         district,
         severity,
+        donationStatus = "active",
         uid,
       } = req.body;
       if (_id) {
+
         await fastify.mongo.db.collection("disasters").updateOne(
           { _id },
           {
@@ -51,6 +53,7 @@ const disasterRoute = (fastify, options, done) => {
               ...(description && { description }),
               ...(location && { location }),
               ...(severity && { severity }),
+              ...(donationStatus && { donationStatus }),
               updatedBy: uid,
               updatedAt: new Date(),
             },
@@ -78,6 +81,7 @@ const disasterRoute = (fastify, options, done) => {
           state,
           district,
           severity,
+          donationStatus: "active",
           createdBy: uid,
           createdAt: new Date(),
         });
@@ -88,7 +92,7 @@ const disasterRoute = (fastify, options, done) => {
     }
   });
 
-  fastify.get("/disasters", isSuperAdmin, async (req, reply) => {
+  fastify.get("/getDisasters", isSuperAdmin, async (req, reply) => {
     try {
       const list = await fastify.mongo.db.collection('disaster').find().toArray();
       reply.send(list)

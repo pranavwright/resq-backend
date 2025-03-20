@@ -113,6 +113,7 @@ const donationRoute = (fastify, options, done) => {
       await fastify.mongo.db
         .collection("generalDonation")
         .updateOne({ _id: donationId, disasterId }, { $set: { status } });
+      reply.status(200).send({ message: "Donation status updated" });
     } catch (error) {
       reply.status(500).send({ message: error.message });
     }

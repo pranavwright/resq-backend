@@ -55,13 +55,16 @@ fastify.addHook("onRequest", async (request, reply) => {
 });
 
 fastify.addHook("onSend", async (request, reply, payload) => {
+  logApi(request, reply);
+});
+
+async function logApi(request, reply) {
   if (request.startTime) {
     const [seconds, nanoseconds] = process.hrtime(request.startTime);
     const responseTimeMs = (seconds * 1000 + nanoseconds / 1e6).toFixed(2);
 
     const { url, headers } = request;
     const urlPath = new URL(url, `http://${headers.host}`).pathname;
-    const formattedPath = urlPath.split("/").filter(Boolean).join(" → ");
 
     const isSuccess = reply.statusCode >= 200 && reply.statusCode < 300;
     const status = isSuccess ? "pass" : "fail";
@@ -71,52 +74,37 @@ fastify.addHook("onSend", async (request, reply, payload) => {
       method: request.method,
       endpointName: urlPath,
       timeRequired: [parseFloat(responseTimeMs)],
-      statusCode: reply.statusCode,
+      statusCode: reply?.statusCode,
       calledAt: new Date(),
       status,
       uid: request?.uid,
-      count: 1, 
+      count: 1,
     };
 
     try {
-      const apiMetrics = await fastify.mongo.db
-        .collection("apiMetrics")
-        .updateOne(
-          { endpointName: urlPath, statusCode: reply.statusCode },
-          {
-            $inc: { count: 1 },
-            $push: { timeRequired: parseFloat(responseTimeMs) },
-          }
-        );
-
-      if (apiMetrics.modifiedCount === 0) {
-        await fastify.mongo.db.collection("apiMetrics").insertOne(apiMetric);
-      }
-
-      console.log(JSON.stringify(apiMetric, null, 2));
-
-      if (
-        endpointName.includes([
-          "disaster",
-          "camp",
-          "collectionPoint",
-          "user",
-          "report",
-        ])
-      ) {
-        await fastify.mongo.db.collection("report").insertOne({
-          _id: customIdGenerator("RPT"),
-          uid: request?.uid,
-          log: reply.sent,
-          endpointName: urlPath,
-          calledAt: new Date(),
-        });
-      }
+      fastify.mongo.db.collection("apiMetrics").updateOne(
+        { endpointName: urlPath, statusCode: reply.statusCode },
+        {
+          $inc: { count: 1 },
+          $push: { timeRequired: parseFloat(responseTimeMs) },
+        },
+        { upsert: true }
+      );
     } catch (error) {
-      console.error("Error logging API metrics:", error);
+      console.error("Error in logging API metrics", error);
     }
+    console.log(JSON.stringify(apiMetric, null, 2));
   }
+}
+
+fastify.addHook("onError", (request, reply, error, done) => {
+  console.error(error);
+  reply
+    .status(500)
+    .send({ message: error?.message || "Internal Server Error" });
+  done();
 });
+
 fastify.addHook("onClose", async (instance) => {
   await instance.mongo.client.close();
 });

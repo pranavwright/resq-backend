@@ -41,95 +41,102 @@ const authRoute = (fastify, options, done) => {
   };
   fastify.post("/register", isRegisterAdmin, async (req, reply) => {
     try {
-        const {
-            role: roles,
-            phoneNumber,
-            name,
-            disasterId,
-            assignPlace,
-            uid,
-        } = req.body;
+      const {
+        role: roles,
+        phoneNumber,
+        name,
+        disasterId,
+        assignPlace,
+        uid,
+      } = req.body;
 
-        let role = roles;
-        if (!role || !phoneNumber || !name || !disasterId) {
-            return reply.status(400).send({ message: "All fields are required" });
-        }
-        if (!Array.isArray(role)) {
-            role = [role];
-        }
+      let role = roles;
+      if (!role || !phoneNumber || !name || !disasterId) {
+        return reply.status(400).send({ message: "All fields are required" });
+      }
+      if (!Array.isArray(role)) {
+        role = [role];
+      }
 
-        const existingUser = await fastify.mongo.db.collection("users").findOne({
-            phoneNumber,
-            "roles.disasterId": disasterId,
+      const existingUser = await fastify.mongo.db.collection("users").findOne({
+        phoneNumber,
+        "roles.disasterId": disasterId,
+      });
+
+      if (!existingUser) {
+        await fastify.mongo.db.collection("users").insertOne({
+          _id: customIdGenerator("USR"),
+          name,
+          phoneNumber,
+          roles: [
+            {
+              disasterId,
+              roles: role,
+              assignPlace,
+            },
+          ],
+          createdBy: uid,
         });
-
-        if (!existingUser) {
-            await fastify.mongo.db.collection("users").insertOne({
-                _id: customIdGenerator("USR"),
-                name,
-                phoneNumber,
-                roles: [
-                    {
-                        disasterId,
-                        roles: role,
-                        assignPlace,
-                    },
-                ],
-                createdBy: uid,
-            });
-            return reply.status(200).send({ message: "User created successfully" });
-
-        } else {
-          const existingRole = existingUser.roles.find(r => r.disasterId === disasterId);
-          if (existingRole) {
-              const existingRoles = existingRole.roles.filter(r => role.includes(r));
-              if(existingRoles.length > 0){
-                return reply.status(400).send({ message: "Role already exists for this disaster" });
-              }
-              else{
-                await fastify.mongo.db.collection("users").updateOne(
-                    {
-                        phoneNumber,
-                        'roles.disasterId': disasterId,
-                    },
-                    {
-                        $push: { 'roles.$.roles': { $each: role } },
-                        ...(assignPlace && { 'roles.$.assignPlace': assignPlace }),
-                    }
-                );
-                return reply.status(200).send({ message: "Role added successfully" });
-              }
-
+        return reply.status(200).send({ message: "User created successfully" });
+      } else {
+        const existingRole = existingUser.roles.find(
+          (r) => r.disasterId === disasterId
+        );
+        if (existingRole) {
+          const existingRoles = existingRole.roles.filter((r) =>
+            role.includes(r)
+          );
+          if (existingRoles.length > 0) {
+            return reply
+              .status(400)
+              .send({ message: "Role already exists for this disaster" });
           } else {
             await fastify.mongo.db.collection("users").updateOne(
-                {
-                    phoneNumber,
-                },
-                {
-                    $push: {
-                        roles: {
-                            disasterId,
-                            roles: role,
-                            assignPlace,
-                        },
-                    },
-                }
+              {
+                phoneNumber,
+                "roles.disasterId": disasterId,
+              },
+              {
+                $push: { "roles.$.roles": { $each: role } },
+                ...(assignPlace && { "roles.$.assignPlace": assignPlace }),
+              }
             );
-            return reply.status(200).send({ message: "Disaster role added successfully" });
+            return reply
+              .status(200)
+              .send({ message: "Role added successfully" });
           }
+        } else {
+          await fastify.mongo.db.collection("users").updateOne(
+            {
+              phoneNumber,
+            },
+            {
+              $push: {
+                roles: {
+                  disasterId,
+                  roles: role,
+                  assignPlace,
+                },
+              },
+            }
+          );
+          return reply
+            .status(200)
+            .send({ message: "Disaster role added successfully" });
         }
-
+      }
     } catch (error) {
-        console.log("Error in Register Route", error);
-        return reply.status(500).send({ message: "Internal Server Error" });
+      console.log("Error in Register Route", error);
+      return reply.status(500).send({ message: "Internal Server Error" });
     }
-});
+  });
 
   fastify.post("/checkPhoneNumber", async (req, reply) => {
     try {
       const { phoneNumber } = req.body;
       if (!phoneNumber) {
         reply.status(400).send({ message: "Phone number is required" });
+        return;
       }
       const numberOnly = phoneNumber.slice(3, phoneNumber.length);
       const checkuser = await fastify.mongo.db
@@ -140,6 +147,7 @@ const authRoute = (fastify, options, done) => {
         );
       if (!checkuser) {
         reply.status(400).send({ message: "User not found" });
+        return;
       }
       reply.status(200).send({ message: "User found", success: true });
     } catch (error) {
@@ -210,6 +218,7 @@ const authRoute = (fastify, options, done) => {
         reply
           .status(400)
           .send({ message: "Phone number and name is required" });
+          return;
       }
       const user = await fastify.mongo.db
         .collection("users")
@@ -247,13 +256,14 @@ const authRoute = (fastify, options, done) => {
           .status(200)
           .send({ message: "User updated successfully", photoUrl: url });
       } else {
-        new Error("Failed to upload image");
+        return reply.status(500).send({message:"Failed to upload image"});
       }
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
 
+  //to check user
   fastify.get("/getUser", isAuthUser, async (req, reply) => {
     try {
       const { uid } = req.query;
@@ -266,35 +276,58 @@ const authRoute = (fastify, options, done) => {
             },
           },
           {
+            $unwind: "$roles", 
+          },
+          {
             $lookup: {
               from: "disasters",
-              localField: "role.disasterIds",
+              localField: "roles.disasterId", 
               foreignField: "_id",
-              as: "disasters",
+              as: "disaster",
             },
           },
           {
-            $unwind: "$disasters",
+            $unwind: {
+              path: "$disaster",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $group: {
+              _id: "$_id",
+              name: { $first: "$name" },
+              photoUrl: { $first: "$photoUrl" },
+              emailId: { $first: "$emailId" },
+              roles: {
+                $push: {
+                  disasterId: "$roles.disasterId",
+                  roles: "$roles.roles",
+                  assignPlace: "$roles.assignPlace",
+                  disasterName: "$disaster.name", 
+                },
+              },
+            },
           },
         ])
         .toArray();
 
-      const roles = user[0].roles.map((role) => {
-        role.disaterName = user[0].disasters.name;
-      });
-      if (!user) {
-        return reply.status(400).send({ message: "User not found" });
+      if (!user || user.length === 0) {
+        reply.status(400).send({ message: "User not found" });
+        return;
       }
-      return reply.status(200).send({
+
+       reply.status(200).send({
         photoUrl: user[0].photoUrl,
         emailId: user[0].emailId,
-        roles: roles,
+        roles: user[0].roles,
         name: user[0].name,
       });
     } catch (error) {
+      console.error("Error in getUser:", error); // Log the error
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
+
   done();
 };
 export default authRoute;

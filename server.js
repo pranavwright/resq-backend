@@ -82,14 +82,16 @@ async function logApi(request, reply) {
     };
 
     try {
-      fastify.mongo.db.collection("apiMetrics").updateOne(
+      const api = await fastify.mongo.db.collection("apiMetrics").updateOne(
         { endpointName: urlPath, statusCode: reply.statusCode },
         {
           $inc: { count: 1 },
           $push: { timeRequired: parseFloat(responseTimeMs) },
-        },
-        { upsert: true }
+        }
       );
+      if (api.modifiedCount === 0) {
+        fastify.mongo.db.collection("apiMetrics").insertOne(apiMetric);
+      }
     } catch (error) {
       console.error("Error in logging API metrics", error);
     }

@@ -32,28 +32,30 @@ const disasterRoute = (fastify, options, done) => {
         name,
         description,
         location,
-        startDate,
-        endDate = new Date(),
+        startDate = new Date(),
+        endDate,
         status = "active",
         state,
         district,
         severity,
         donationStatus = "active",
         uid,
+        type,
       } = req.body;
       if (_id) {
-
         await fastify.mongo.db.collection("disasters").updateOne(
           { _id },
           {
             $set: {
-              ...(endDate && { endDate }),
               ...(status && { status }),
               ...(name && { name }),
               ...(description && { description }),
               ...(location && { location }),
               ...(severity && { severity }),
               ...(donationStatus && { donationStatus }),
+              ...(location && { location }),
+              ...(type & { type }),
+              ...(status == "inactive" && { endDate: endDate ?? new Date() }),
               updatedBy: uid,
               updatedAt: new Date(),
             },
@@ -67,7 +69,9 @@ const disasterRoute = (fastify, options, done) => {
           !startDate ||
           !state ||
           !district ||
-          !severity
+          !severity ||
+          !location ||
+          !type
         ) {
           return reply.status(400).send({ message: "All fields are required" });
         }
@@ -76,12 +80,14 @@ const disasterRoute = (fastify, options, done) => {
           name,
           description,
           location,
-          startDate,
+          startDate: new Date(startDate),
           status: "active",
           state,
           district,
           severity,
           donationStatus: "active",
+          location,
+          type,
           createdBy: uid,
           createdAt: new Date(),
         });
@@ -94,8 +100,11 @@ const disasterRoute = (fastify, options, done) => {
 
   fastify.get("/getDisasters", isSuperAdmin, async (req, reply) => {
     try {
-      const list = await fastify.mongo.db.collection('disaster').find().toArray();
-      reply.send(list)
+      const list = await fastify.mongo.db
+        .collection("disasters")
+        .find()
+        .toArray();
+      reply.send(list);
     } catch (error) {
       reply.status(500).sent({ message: "Internal Server Error" });
     }

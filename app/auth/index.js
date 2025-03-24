@@ -14,6 +14,10 @@ import admin from "firebase-admin";
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import fs from "fs";
+import qrcode from 'qrcode';
+import PDFDocument from "pdfkit";
+import { idCard } from "../../utils/pdfGenerator.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -58,6 +62,14 @@ const authRoute = (fastify, options, done) => {
         role = [role];
       }
 
+      const isAdmin = await fastify.mongo.db.collection("users").findOne({
+        phoneNumber,
+      });
+      if (isAdmin && isAdmin.roles[0].roles.includes("superAdmin")) {
+        return reply
+          .status(400)
+          .send({ message: "User can't be added as an admin" });
+      }
       const existingUser = await fastify.mongo.db.collection("users").findOne({
         phoneNumber,
         "roles.disasterId": disasterId,
@@ -116,7 +128,7 @@ const authRoute = (fastify, options, done) => {
               },
               {
                 $push: { "roles.$.roles": { $each: role } },
-                ...(assignPlace && { "roles.$.assignPlace": assignPlace }),
+                $set: { "roles.$.assignPlace": assignPlace },
               }
             );
             return reply
@@ -354,20 +366,54 @@ const authRoute = (fastify, options, done) => {
       }
       const users = await fastify.mongo.db
         .collection("users")
-        .find({
-          "roles.disasterId": disasterId,
-        })
+        .aggregate([
+          {
+            $match: {
+              "roles.disasterId": disasterId,
+            },
+          },
+          {
+            $unwind: {
+              path: "$roles",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $lookup: {
+              from: "collectionPoints",
+              localField: "roles.assignPlace",
+              foreignField: "_id",
+              as: "collectionPoint",
+            },
+          },
+          {
+            $lookup: {
+              from: "camps",
+              localField: "roles.assignPlace",
+              foreignField: "_id",
+              as: "camp",
+            },
+          },
+          {
+            $unwind: {
+              path: "$camp",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $unwind: {
+              path: "$collectionPoint",
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+        ])
         .toArray();
 
       users.forEach((user) => {
-        user.roles = user.roles.map((r) => {
-          if (r.disasterId === disasterId) {
-            user.assignedRoles = r.roles; 
-            return r; 
-          } else {
-            return r; 
-          }
-        });
+        if (user.roles.disasterId == disasterId) {
+          user.assignedRoles = user.roles.roles;
+          user.assignedPlace = user.camp || user.collectionPoint;
+        }
       });
       reply.send(users);
     } catch (error) {
@@ -381,16 +427,51 @@ const authRoute = (fastify, options, done) => {
       if (!_id || !disasterId || !role) {
         return reply.status(400).send({ message: "Missing required fields" });
       }
-  
+
+      const isValidAdmin = await fastify.mongo.db.collection("users").findOne({
+        _id: uid,
+      });
+      const roleHierarchy = [
+        "superAdmin",
+        "admin",
+        "stat",
+        "collectionPointAdmin",
+        "campAdmin",
+      ];
+
+      const adminRoles = isValidAdmin.roles.find(
+        (disaster) => disaster.disasterId === disasterId
+      )?.roles;
+
+      if (!adminRoles) {
+        return reply.status(403).send({
+          message: "Unauthorized: Admin roles not found for this disaster.",
+        });
+      }
+
+      const adminHighestRole = adminRoles.reduce((highest, current) => {
+        const currentRank = roleHierarchy.indexOf(current);
+        const highestRank = roleHierarchy.indexOf(highest);
+        return currentRank < highestRank ? current : highest;
+      }, adminRoles[0]);
+
+      const roleRank = roleHierarchy.indexOf(role);
+
+      if (adminHighestRole < roleRank) {
+        return reply
+          .status(400)
+          .send({ message: "You are not authorized to revoke this role" });
+      }
+
       const isUser = await fastify.mongo.db.collection("users").findOne({
         _id,
         "roles.disasterId": disasterId,
       });
-  
+
       if (!isUser) {
         return reply.status(400).send({ message: "User not found" });
       }
-  
+
       await fastify.mongo.db.collection("users").updateOne(
         {
           _id,
@@ -402,13 +483,52 @@ const authRoute = (fastify, options, done) => {
           },
         }
       );
-  
+
       reply.send({ message: `Role '${role}' removed from user.` });
     } catch (error) {
-      reply.status(500).send({ message: "Internal Server Error", error: error.message });
+      reply
+        .status(500)
+        .send({ message: "Internal Server Error", error: error.message });
     }
   });
+
   
+fastify.post("/generateIdCards", async (request, reply) => {
+  try {
+    const { userIds: _id, disasterId } = request.body;
+    let _ids = _id;
+    if (!Array.isArray(_ids)) {
+      _ids = [_id];
+    }
+
+    if (!_ids || !Array.isArray(_ids) || _ids.length === 0 || !disasterId) {
+      return reply
+        .status(400)
+        .send({ error: "Missing or invalid _ids or disasterId" });
+    }
+
+    const users = await fastify.mongo.db
+      .collection("users")
+      .find({ _id: { $in: _ids } })
+      .toArray();
+
+    if (users.length === 0) {
+      return reply.status(404).send({ error: "Users not found" });
+    }
+
+    const pdfBuffer = await idCard(users);
+
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `attachment; filename=generated.pdf`);
+    reply.send(pdfBuffer);
+    
+  } catch (error) {
+    console.error("Error generating ID cards:", error);
+    if (!reply.sent) {
+      reply.status(500).send({ error: `Internal server error: ${error.message}` });
+    }
+  }
+});
 
   done();
 };

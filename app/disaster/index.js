@@ -22,7 +22,7 @@ const disasterRoute = (fastify, options, done) => {
   const isAdmin = {
     preHandler: [
       (req, reply) =>
-        isUserAllowed(fastify, req, reply, ["superAdmin", "admin"]),
+        isUserAllowed(fastify, req, reply, ["superAdmin", "admin", 'stat']),
     ],
   };
   fastify.post("/postDisaster", isSuperAdmin, async (req, reply) => {
@@ -110,9 +110,9 @@ const disasterRoute = (fastify, options, done) => {
     }
   });
 
-  fastify.post("/camp", isAdmin, async (req, reply) => {
+  fastify.post("/postCamp", isAdmin, async (req, reply) => {
     try {
-      const { disasterId, location, contact, capacity, campAdmin, _id, uid } =
+      const { disasterId, location, contact, capacity, campAdmin, _id, uid, name, status='active' } =
         req.body;
       if (_id) {
         await fastify.mongo.db.collection("camps").updateOne(
@@ -123,20 +123,26 @@ const disasterRoute = (fastify, options, done) => {
               ...(contact && { contact }),
               ...(capacity && { capacity }),
               ...(campAdmin && { campAdmin }),
+              ...(name && {name}),
+              ...(status && {status}),
               updatedAt: new Date(),
               updatedBy: uid,
             },
           }
         );
       } else {
+        if(!name || !location ){
+          return reply.status(400).send({ message: "All fields are required" });
+        }
         await fastify.mongo.db.collection("camps").insertOne({
           _id: customIdGenerator("CMPT"),
           disasterId,
+          name,
           location,
           contact,
           capacity,
           campAdmin,
-          disasterId,
+          status,
           createdBy: uid,
           createdAt: new Date(),
         });
@@ -149,9 +155,18 @@ const disasterRoute = (fastify, options, done) => {
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
-  fastify.post("/collectionPoint", isAdmin, async (req, reply) => {
+  fastify.get('/getCamps',isAdmin, async (req,reply) => {
     try {
-      const { disasterId, location, contact, collectionAdmin, _id, uid } =
+      const {disasterId} =req.query;
+      const list = await fastify.mongo.db.collection('camps').find({disasterId}).toArray();
+      reply.send(list)
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  })
+  fastify.post("/postCollectionPoint", isAdmin, async (req, reply) => {
+    try {
+      const { disasterId, location, contact, collectionAdmin, _id, uid, name, status="active",capacity  } =
         req.body;
       if (_id) {
         await fastify.mongo.db.collection("collectionPoints").updateOne(
@@ -161,6 +176,8 @@ const disasterRoute = (fastify, options, done) => {
               ...(location && { location }),
               ...(contact && { contact }),
               ...(collectionAdmin && { collectionAdmin }),
+              ...(name && {name}),
+              ...(status && {status}),
               updatedAt: new Date(),
               updatedBy: uid,
             },
@@ -172,6 +189,8 @@ const disasterRoute = (fastify, options, done) => {
           disasterId,
           location,
           capacity,
+          name,
+          status,
           collectionAdmin,
           createdBy: uid,
           disasterId,
@@ -181,6 +200,19 @@ const disasterRoute = (fastify, options, done) => {
       reply
         .status(200)
         .send({ message: "Collection Point created/updated", success: true });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  fastify.get("/getCollectionPoints", isAdmin, async (req, reply) => {
+    try {
+      const { disasterId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("collectionPoints")
+        .find({ disasterId })
+        .toArray();
+      reply.send(list);
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }

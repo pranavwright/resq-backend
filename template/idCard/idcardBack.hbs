@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ID Card</title>
+  <style>
+     body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    .card {
+      width: 54mm;
+      height: 85mm;
+      padding: 8mm;
+      box-sizing: border-box;
+      border: 1px solid #000;
+      border-radius: 6mm;
+      background-color: #FFA500;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      text-align: center;
+    }
+
+    .qrcode {
+      width: 20mm;
+      height: 20mm;
+      margin-top: 4mm;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    
+
+    <img class="qrcode" src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={{qr_data}}" alt="QR Code">
+  </div>
+
+</body>
+</html>

@@ -41,7 +41,7 @@ fastify.register(fastifyJwt, {
 fastify.register(FastifyMongoDB, {
   forceClose: true,
   url: MONGODB_URL,
-  database: "resQ",
+  database: process.env.MONGODB_DATABASE || "test",
 });
 
 fastify.addHook("onError", (request, reply, error, done) => {
@@ -60,6 +60,7 @@ fastify.addHook("onSend", async (request, reply, payload) => {
 
 async function logApi(request, reply) {
   if (request.startTime) {
+    const ENV = process.env.NODE_ENV || "development";
     const [seconds, nanoseconds] = process.hrtime(request.startTime);
     const responseTimeMs = (seconds * 1000 + nanoseconds / 1e6).toFixed(2);
 
@@ -77,13 +78,14 @@ async function logApi(request, reply) {
       statusCode: reply?.statusCode,
       calledAt: new Date(),
       status,
+      env: ENV,
       uid: request?.uid,
       count: 1,
     };
 
     try {
       const api = await fastify.mongo.db.collection("apiMetrics").updateOne(
-        { endpointName: urlPath, statusCode: reply.statusCode },
+        { endpointName: urlPath, statusCode: reply.statusCode, env: ENV },
         {
           $inc: { count: 1 },
           $push: { timeRequired: parseFloat(responseTimeMs) },

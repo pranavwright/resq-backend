@@ -60,7 +60,7 @@ export const uploadProfileImage = async (fileData, fileName) => {
           fs.unlinkSync(tempFilePath);
         }
         
-        const publicUrl = `https://storage.cloud.google.com/${bucket.name}/${fileName}`;
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
         resolve({
           success: true,
           url: publicUrl,
@@ -107,7 +107,7 @@ export const uploadApkFile = async (fileBuffer, fileName) => {
         resolve({
           success: true,
           message: "APK uploaded successfully",
-          url: `https://storage.cloud.google.com/${bucket.name}/${fileName}`,
+          url: `https://storage.googleapis.com/${bucket.name}/${fileName}`,
         });
       });
 

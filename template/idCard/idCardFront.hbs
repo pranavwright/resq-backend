@@ -1,0 +1,66 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ID Card</title>
+  <style>
+   body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    .card {
+
+      padding: 20px;
+      border: 2px solid #333;
+      border-radius: 15px;
+      background-color: #FFA500;
+      box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+      text-align: center;
+       width: 54mm;
+      height: 85mm;
+        display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+    }
+
+    .profile-image {
+      width: 40%;
+      height: 34%;
+     
+      object-fit: cover;
+      border: 3px solid #000;
+      margin-bottom: 13px;
+    }
+
+    .card h1 {
+      margin: 10px 0;
+      font-size: 20px;
+    }
+
+    .card p {
+      margin: 3px 0;
+      font-size: 14px;
+    }
+
+   
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h3>Offical of {{disaster}}</h3>
+    <img class="profile-image" src="{{image_url}}" alt="Profile Photo" />
+    <h1>{{name}}</h1>
+    <p><strong>Designation:</strong> {{designation}}</p>
+    <p><strong>Email:</strong> {{email}}</p>
+    <p><strong>Phone:</strong> {{phone}}</p>
+
+  </div>
+
+</body>
+</html>

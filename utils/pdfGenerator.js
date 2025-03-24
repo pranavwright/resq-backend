@@ -32,7 +32,7 @@ async function generatePdfFromHtml(html, data, type) {
   return pdfBuffer;
 }
 
-async function idCard(datas) {
+async function idCard(data) {
   const idCardTemplateFront = fs.readFileSync(
     "../template/idCard/idcardfront.hbs",
     "utf8"
@@ -42,16 +42,55 @@ async function idCard(datas) {
     "utf8"
   );
 
-  let pdfBuffer;
-  for (const user in datas) {
-    pdfBuffer.push(generatePdfFromHtml(idCardTemplateFront, user));
-    pdfBuffer.push(generatePdfFromHtml(idCardTemplateBack, user));
+  const pdfBuffers = [];
+  for (const user of data) {
+    const userData = {
+      name: user.name,
+      designation:
+        user.roles
+          .find((role) => role.disasterId === disasterId)
+          ?.roles.join(", ") || "N/A",
+      email: user.emailId || "N/A",
+      phone: user.phoneNumber || "N/A",
+      image_url: user.photoUrl || "https://storage.googleapis.com/resq_user_images/logo.jpg", 
+      disaster: disasterId,
+      qr_data: JSON.stringify({
+        name: user.name,
+        designation:
+          user.roles
+            .find((role) => role.disasterId === disasterId)
+            ?.roles.join(", ") || "N/A",
+        email: user.emailId || "N/A",
+        phone: user.phoneNumber || "N/A",
+        disasterId: disasterId,
+      }),
+    };
+
+    const frontPdfBuffer = await generatePdfFromHtml(
+      idCardTemplateFront,
+      userData,
+      false
+    );
+    const backPdfBuffer = await generatePdfFromHtml(
+      idCardTemplateBack,
+      userData,
+      false
+    );
+
+    pdfBuffers.push({ front: frontPdfBuffer, back: backPdfBuffer });
   }
 
-  // Save to file
-  fs.writeFileSync("id_card.pdf", pdfBuffer);
-  console.log("PDF saved as id_card.pdf");
-  return pdfBuffer;
+  // Combine front and back PDFs into a single PDFuy5o8ynhtkuyujykyo70p (using a library like pdf-lib if needed)
+  // For simplicity, we'll send the first card's front and back combined.
+  if (pdfBuffers.length > 0) {
+    const combinedPdf = Buffer.concat([
+      pdfBuffers[0].front,
+      pdfBuffers[0].back,
+    ]);
+    return combinedPdf;
+  } else {
+    return Buffer.from([]); // return empty buffer if no data
+  }
 }
 
-export {idCard, generatePdfFromHtml}
+export { idCard, generatePdfFromHtml };

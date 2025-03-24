@@ -14,9 +14,6 @@ import admin from "firebase-admin";
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-import fs from "fs";
-import qrcode from 'qrcode';
-import PDFDocument from "pdfkit";
 import { idCard } from "../../utils/pdfGenerator.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -240,16 +237,8 @@ const authRoute = (fastify, options, done) => {
 
   fastify.put("/updateUser", isAuthUser, async (req, reply) => {
     try {
-      const { email: emailId, uid, photoUrl: file } = req.body;
-      if (!file) {
-        return reply.status(400).send({ message: "Image is required" });
-      }
-      if (!emailId) {
-        reply
-          .status(400)
-          .send({ message: "Phone number and name is required" });
-        return;
-      }
+      const { email: emailId, uid, photoUrl: file, name } = req.body;
+
       const user = await fastify.mongo.db
         .collection("users")
         .findOne({ _id: uid });
@@ -257,36 +246,57 @@ const authRoute = (fastify, options, done) => {
         return reply.status(400).send({ message: "User not found" });
       }
 
-      // Extract file extension from base64 data
-      let fileExtension = "jpg"; // Default extension
-      let fileData = file;
+      if (file) {
+        // Extract file extension from base64 data
+        let fileExtension = "jpg"; // Default extension
+        let fileData = file;
 
-      if (typeof file === "string" && file.startsWith("data:image/")) {
-        const matches = file.match(/^data:image\/([a-zA-Z]+);base64,/);
-        if (matches && matches.length > 1) {
-          fileExtension = matches[1].toLowerCase();
-          fileData = file.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
+        if (typeof file === "string" && file.startsWith("data:image/")) {
+          const matches = file.match(/^data:image\/([a-zA-Z]+);base64,/);
+          if (matches && matches.length > 1) {
+            fileExtension = matches[1].toLowerCase();
+            fileData = file.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
+          }
         }
-      }
 
-      // Generate unique filename with extension
-      const fileName = `${uid}.${fileExtension}`;
+        // Generate unique filename with extension
+        const fileName = `${uid}.${fileExtension}`;
 
-      // Upload the image with proper filename
-      const { success, message, url } = await uploadProfileImage(
-        fileData,
-        fileName
-      );
+        // Upload the image with proper filename
+        const { success, message, url } = await uploadProfileImage(
+          fileData,
+          fileName
+        );
 
-      if (success) {
+        if (success) {
+          await fastify.mongo.db
+            .collection("users")
+            .updateOne(
+              { _id: uid },
+              {
+                $set: {
+                  photoUrl: url,
+                  ...(emailId && { emailId }),
+                  ...(name & { name }),
+                },
+              }
+            );
+          reply
+            .status(200)
+            .send({ message: "User updated successfully", photoUrl: url });
+        } else {
+          return reply.status(500).send({ message: "Failed to upload image" });
+        }
+      } else {
         await fastify.mongo.db
           .collection("users")
-          .updateOne({ _id: uid }, { $set: { photoUrl: url, emailId } });
+          .updateOne(
+            { _id: uid },
+            { $set: { ...(emailId && { emailId }), ...(name & { name }) } }
+          );
         reply
           .status(200)
           .send({ message: "User updated successfully", photoUrl: url });
-      } else {
-        return reply.status(500).send({ message: "Failed to upload image" });
       }
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
@@ -492,43 +502,43 @@ const authRoute = (fastify, options, done) => {
     }
   });
 
-  
-fastify.post("/generateIdCards", async (request, reply) => {
-  try {
-    const { userIds: _id, disasterId } = request.body;
-    let _ids = _id;
-    if (!Array.isArray(_ids)) {
-      _ids = [_id];
+  fastify.post("/generateIdCards", async (request, reply) => {
+    try {
+      const { userIds: _id, disasterId } = request.body;
+      let _ids = _id;
+      if (!Array.isArray(_ids)) {
+        _ids = [_id];
+      }
+
+      if (!_ids || !Array.isArray(_ids) || _ids.length === 0 || !disasterId) {
+        return reply
+          .status(400)
+          .send({ error: "Missing or invalid _ids or disasterId" });
+      }
+
+      const users = await fastify.mongo.db
+        .collection("users")
+        .find({ _id: { $in: _ids }, "roles.disasterId": disasterId })
+        .toArray();
+
+      if (users.length === 0) {
+        return reply.status(404).send({ error: "Users not found" });
+      }
+
+      const pdfBuffer = await idCard(users, disasterId);
+
+      reply.header("Content-Type", "application/pdf");
+      reply.header("Content-Disposition", `attachment; filename=generated.pdf`);
+      reply.send(pdfBuffer);
+    } catch (error) {
+      console.error("Error generating ID cards:", error);
+      if (!reply.sent) {
+        reply
+          .status(500)
+          .send({ error: `Internal server error: ${error.message}` });
+      }
     }
-
-    if (!_ids || !Array.isArray(_ids) || _ids.length === 0 || !disasterId) {
-      return reply
-        .status(400)
-        .send({ error: "Missing or invalid _ids or disasterId" });
-    }
-
-    const users = await fastify.mongo.db
-      .collection("users")
-      .find({ _id: { $in: _ids } })
-      .toArray();
-
-    if (users.length === 0) {
-      return reply.status(404).send({ error: "Users not found" });
-    }
-
-    const pdfBuffer = await idCard(users);
-
-    reply.header('Content-Type', 'application/pdf');
-    reply.header('Content-Disposition', `attachment; filename=generated.pdf`);
-    reply.send(pdfBuffer);
-    
-  } catch (error) {
-    console.error("Error generating ID cards:", error);
-    if (!reply.sent) {
-      reply.status(500).send({ error: `Internal server error: ${error.message}` });
-    }
-  }
-});
+  });
 
   done();
 };

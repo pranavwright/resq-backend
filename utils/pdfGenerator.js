@@ -1,6 +1,15 @@
-const fs = require("fs");
-const puppeteer = require("puppeteer");
-const handlebars = require("handlebars");
+import fs from "fs";
+import puppeteer from "puppeteer";
+import handlebars from "handlebars";
+import path from "path";
+import { PDFDocument } from "pdf-lib";
+
+
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 /**
  * Generate a PDF buffer from HTML using Puppeteer and Handlebars.
@@ -8,6 +17,7 @@ const handlebars = require("handlebars");
  * @param {Object} data - Data to inject into HTML.
  * @returns {Buffer} - Generated PDF buffer.
  */
+
 async function generatePdfFromHtml(html, data, type) {
   const template = handlebars.compile(html);
   const compiledHtml = template(data);
@@ -21,8 +31,8 @@ async function generatePdfFromHtml(html, data, type) {
     pdfBuffer = await page.pdf({ format: page });
   } else {
     pdfBuffer = await page.pdf({
-      width: "85mm",
-      height: "54mm",
+      width: "54mm",
+      height: "85mm",
       printBackground: true,
       margin: { top: "0mm", bottom: "0mm", left: "0mm", right: "0mm" },
     });
@@ -32,13 +42,13 @@ async function generatePdfFromHtml(html, data, type) {
   return pdfBuffer;
 }
 
-async function idCard(data) {
+async function idCard(data, disaster) {
   const idCardTemplateFront = fs.readFileSync(
-    "../template/idCard/idcardfront.hbs",
+    path.join(__dirname, "../template/idCard/idcardfront.hbs"),
     "utf8"
   );
   const idCardTemplateBack = fs.readFileSync(
-    "../template/idCard/idcardBack.hbs",
+    path.join(__dirname, "../template/idCard/idcardBack.hbs"),
     "utf8"
   );
 
@@ -48,21 +58,23 @@ async function idCard(data) {
       name: user.name,
       designation:
         user.roles
-          .find((role) => role.disasterId === disasterId)
+          .find((role) => role.disasterId === disaster._id)
           ?.roles.join(", ") || "N/A",
       email: user.emailId || "N/A",
       phone: user.phoneNumber || "N/A",
-      image_url: user.photoUrl || "https://storage.googleapis.com/resq_user_images/logo.jpg", 
-      disaster: disasterId,
+      image_url:
+        user.photoUrl ||
+        "https://storage.googleapis.com/resq_user_images/logo.jpg",
+      disaster: disaster.name,
       qr_data: JSON.stringify({
         name: user.name,
         designation:
           user.roles
-            .find((role) => role.disasterId === disasterId)
+            .find((role) => role.disasterId === disaster._id)
             ?.roles.join(", ") || "N/A",
         email: user.emailId || "N/A",
         phone: user.phoneNumber || "N/A",
-        disasterId: disasterId,
+        disasterId: disaster._id,
       }),
     };
 
@@ -80,17 +92,26 @@ async function idCard(data) {
     pdfBuffers.push({ front: frontPdfBuffer, back: backPdfBuffer });
   }
 
-  // Combine front and back PDFs into a single PDFuy5o8ynhtkuyujykyo70p (using a library like pdf-lib if needed)
-  // For simplicity, we'll send the first card's front and back combined.
   if (pdfBuffers.length > 0) {
-    const combinedPdf = Buffer.concat([
-      pdfBuffers[0].front,
-      pdfBuffers[0].back,
-    ]);
-    return combinedPdf;
+    const mergedPdf = await PDFDocument.create();
+  
+    for (const { front, back } of pdfBuffers) {
+      const frontPdf = await PDFDocument.load(front);
+      const backPdf = await PDFDocument.load(back);
+  
+      const [frontPage] = await mergedPdf.copyPages(frontPdf, [0]);
+      mergedPdf.addPage(frontPage);
+  
+      const [backPage] = await mergedPdf.copyPages(backPdf, [0]);
+      mergedPdf.addPage(backPage);
+    }
+  
+    const finalPdfBuffer = await mergedPdf.save();
+    return Buffer.from(finalPdfBuffer);
   } else {
-    return Buffer.from([]); // return empty buffer if no data
+    return Buffer.from([]);
   }
+  
 }
 
 export { idCard, generatePdfFromHtml };

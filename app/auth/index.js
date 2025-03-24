@@ -521,11 +521,12 @@ const authRoute = (fastify, options, done) => {
         .find({ _id: { $in: _ids }, "roles.disasterId": disasterId })
         .toArray();
 
+        const disaster = await fastify.mongo.db.collection("disasters").findOne({_id:disasterId});
       if (users.length === 0) {
         return reply.status(404).send({ error: "Users not found" });
       }
 
-      const pdfBuffer = await idCard(users, disasterId);
+      const pdfBuffer = await idCard(users, disaster);
 
       reply.header("Content-Type", "application/pdf");
       reply.header("Content-Disposition", `attachment; filename=generated.pdf`);

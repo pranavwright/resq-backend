@@ -44,11 +44,11 @@ async function generatePdfFromHtml(html, data, type) {
 
 async function idCard(data, disaster) {
   const idCardTemplateFront = fs.readFileSync(
-    path.join(__dirname, "../template/idCard/idcardfront.hbs"),
+    path.join(__dirname, "../template/idCard/idCardfront.hbs"),
     "utf8"
   );
   const idCardTemplateBack = fs.readFileSync(
-    path.join(__dirname, "../template/idCard/idcardBack.hbs"),
+    path.join(__dirname, "../template/idCard/idCardBack.hbs"),
     "utf8"
   );
 

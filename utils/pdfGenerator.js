@@ -22,7 +22,10 @@ async function generatePdfFromHtml(html, data, type) {
   const template = handlebars.compile(html);
   const compiledHtml = template(data);
 
-  const browser = await puppeteer.launch({ headless: "new" });
+  const browser = await puppeteer.launch({
+    headless: "new",
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
   const page = await browser.newPage();
   await page.setContent(compiledHtml, { waitUntil: "networkidle0" });
   let pdfBuffer;

@@ -22,115 +22,116 @@ const disasterRoute = (fastify, options, done) => {
   const isAdmin = {
     preHandler: [
       (req, reply) =>
-        isUserAllowed(fastify, req, reply, ["superAdmin", "admin", 'stat']),
+        isUserAllowed(fastify, req, reply, ["superAdmin", "admin", "stat"]),
     ],
   };
 
-  
-fastify.get('/getDisasterData', async (req, reply) => {
-  try {
+  fastify.get("/getDisasterData", async (req, reply) => {
+    try {
       const { disasterId } = req.query;
 
       if (!disasterId) {
-          return reply.status(400).send({ message: "Disaster ID is required" });
+        return reply.status(400).send({ message: "Disaster ID is required" });
       }
 
-
-      const disasterData = await fastify.mongo.db.collection('disasters').aggregate([
+      const disasterData = await fastify.mongo.db
+        .collection("disasters")
+        .aggregate([
           {
-              $match: {
-                  _id: disasterId
-              }
+            $match: {
+              _id: disasterId,
+            },
           },
           {
-              $lookup: {
-                  from: 'camps',
-                  localField: '_id',
-                  foreignField: 'disasterId',
-                  as: 'camps'
-              }
+            $lookup: {
+              from: "camps",
+              localField: "_id",
+              foreignField: "disasterId",
+              as: "camps",
+            },
           },
           {
-              $lookup: {
-                  from: 'collectionPoints',
-                  localField: '_id',
-                  foreignField: 'disasterId',
-                  as: 'collectionPoints'
-              }
+            $lookup: {
+              from: "collectionPoints",
+              localField: "_id",
+              foreignField: "disasterId",
+              as: "collectionPoints",
+            },
           },
           {
-              $lookup: {
-                  from: 'members',
-                  localField: '_id',
-                  foreignField: 'disasterId',
-                  as: 'members'
-              }
+            $lookup: {
+              from: "members",
+              localField: "_id",
+              foreignField: "disasterId",
+              as: "members",
+            },
           },
           {
-              $lookup: {
-                  from: 'items',
-                  localField: '_id',
-                  foreignField: 'disasterId',
-                  as: 'items'
-              }
+            $lookup: {
+              from: "items",
+              localField: "_id",
+              foreignField: "disasterId",
+              as: "items",
+            },
           },
           {
-              $project: {
-                  _id: 1,
-                  name: 1,
-                  description: 1,
-                  location: 1,
-                  startDate: 1,
-                  endDate: 1,
-                  status: 1,
-                  state: 1,
-                  district: 1,
-                  severity: 1,
-                  type: 1,
-                  campsCount: { $size: '$camps' },
-                  collectionPointsCount: { $size: '$collectionPoints' },
-                  alive: {
-                      $size: {
-                          $filter: {
-                              input: '$members',
-                              as: 'member',
-                              cond: { $eq: ['$$member.status', 'alive'] }
-                          }
-                      }
+            $project: {
+              _id: 1,
+              name: 1,
+              description: 1,
+              location: 1,
+              startDate: 1,
+              endDate: 1,
+              status: 1,
+              state: 1,
+              district: 1,
+              severity: 1,
+              type: 1,
+              campsCount: { $size: "$camps" },
+              collectionPointsCount: { $size: "$collectionPoints" },
+              alive: {
+                $size: {
+                  $filter: {
+                    input: "$members",
+                    as: "member",
+                    cond: { $eq: ["$$member.status", "alive"] },
                   },
-                  dead: {
-                      $size: {
-                          $filter: {
-                              input: '$members',
-                              as: 'member',
-                              cond: { $eq: ['$$member.status', 'dead'] }
-                          }
-                      }
+                },
+              },
+              dead: {
+                $size: {
+                  $filter: {
+                    input: "$members",
+                    as: "member",
+                    cond: { $eq: ["$$member.status", "dead"] },
                   },
-                  missing: {
-                      $size: {
-                          $filter: {
-                              input: '$members',
-                              as: 'member',
-                              cond: { $eq: ['$$member.status', 'missing'] }
-                          }
-                      }
+                },
+              },
+              missing: {
+                $size: {
+                  $filter: {
+                    input: "$members",
+                    as: "member",
+                    cond: { $eq: ["$$member.status", "missing"] },
                   },
-                  items: 1
-              }
-          }
-      ]).toArray(); 
+                },
+              },
+              items: 1,
+            },
+          },
+        ])
+        .toArray();
 
       if (disasterData.length === 0) {
-          return reply.status(404).send({ message: "Disaster not found" });
+        return reply.status(404).send({ message: "Disaster not found" });
       }
 
-      reply.send(disasterData[0]); 
-  } catch (error) {
+      reply.send(disasterData[0]);
+    } catch (error) {
       console.error("Error fetching disaster data:", error);
       reply.status(500).send({ message: "Internal Server Error" });
-  }
-});
+    }
+  });
   fastify.post("/postDisaster", isSuperAdmin, async (req, reply) => {
     try {
       const {
@@ -204,7 +205,7 @@ fastify.get('/getDisasterData', async (req, reply) => {
     }
   });
 
-  fastify.get("/getDisasters", isSuperAdmin, async (req, reply) => {
+  fastify.get("/getDisasters", async (req, reply) => {
     try {
       const list = await fastify.mongo.db
         .collection("disasters")
@@ -218,8 +219,17 @@ fastify.get('/getDisasterData', async (req, reply) => {
 
   fastify.post("/postCamp", isAdmin, async (req, reply) => {
     try {
-      const { disasterId, location, contact, capacity, campAdmin, _id, uid, name, status='active' } =
-        req.body;
+      const {
+        disasterId,
+        location,
+        contact,
+        capacity,
+        campAdmin,
+        _id,
+        uid,
+        name,
+        status = "active",
+      } = req.body;
       if (_id) {
         await fastify.mongo.db.collection("camps").updateOne(
           { _id, disasterId },
@@ -229,15 +239,15 @@ fastify.get('/getDisasterData', async (req, reply) => {
               ...(contact && { contact }),
               ...(capacity && { capacity }),
               ...(campAdmin && { campAdmin }),
-              ...(name && {name}),
-              ...(status && {status}),
+              ...(name && { name }),
+              ...(status && { status }),
               updatedAt: new Date(),
               updatedBy: uid,
             },
           }
         );
       } else {
-        if(!name || !location ){
+        if (!name || !location) {
           return reply.status(400).send({ message: "All fields are required" });
         }
         await fastify.mongo.db.collection("camps").insertOne({
@@ -261,19 +271,31 @@ fastify.get('/getDisasterData', async (req, reply) => {
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
-  fastify.get('/getCamps',isAdmin, async (req,reply) => {
+  fastify.get("/getCamps", isAdmin, async (req, reply) => {
     try {
-      const {disasterId} =req.query;
-      const list = await fastify.mongo.db.collection('camps').find({disasterId, status: "active"}).toArray();
-      reply.send(list)
+      const { disasterId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("camps")
+        .find({ disasterId, status: "active" })
+        .toArray();
+      reply.send(list);
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }
-  })
+  });
   fastify.post("/postCollectionPoint", isAdmin, async (req, reply) => {
     try {
-      const { disasterId, location, contact, collectionAdmin, _id, uid, name, status="active",capacity  } =
-        req.body;
+      const {
+        disasterId,
+        location,
+        contact,
+        collectionAdmin,
+        _id,
+        uid,
+        name,
+        status = "active",
+        capacity,
+      } = req.body;
       if (_id) {
         await fastify.mongo.db.collection("collectionPoints").updateOne(
           { _id, disasterId },
@@ -282,8 +304,8 @@ fastify.get('/getDisasterData', async (req, reply) => {
               ...(location && { location }),
               ...(contact && { contact }),
               ...(collectionAdmin && { collectionAdmin }),
-              ...(name && {name}),
-              ...(status && {status}),
+              ...(name && { name }),
+              ...(status && { status }),
               updatedAt: new Date(),
               updatedBy: uid,
             },

@@ -4,33 +4,53 @@ import handlebars from "handlebars";
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import puppeteer from "puppeteer";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const user = process.env.EMAIL || "";
+const pass = process.env.EMAIL_PASS || "";
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
-const sendEmail = async (to, subject, templatePath, data) => {
+const sendEmail = async (to, subject, templatePathOrHtml, data = {}) => {
   try {
-    const template = fs.readFileSync(
-      path.join(__dirname, templatePath),
-      "utf8"
-    );
-    const html = handlebars.compile(template)(data);
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: user,
+        pass: pass,
+      },
+    });
+
+    let html;
+    if (templatePathOrHtml.endsWith(".hbs")) {
+      const template = fs.readFileSync(
+        path.resolve(__dirname, templatePathOrHtml),
+        "utf8"
+      );
+      html = handlebars.compile(template)(data);
+    } else {
+      html = templatePathOrHtml; // If direct HTML string is provided
+    }
+
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
     const mailOptions = {
       from: process.env.EMAIL,
       to,
       subject,
+      text: subject,
       html,
     };
-    await transporter.sendMail(mailOptions);
+
+    console.log("Generated Email HTML:", html);
+    const res = await transporter.sendMail(mailOptions);
     console.log(`Email sent to ${to} with subject "${subject}"`);
     return true;
   } catch (error) {
@@ -39,6 +59,7 @@ const sendEmail = async (to, subject, templatePath, data) => {
   }
 };
 
+
 export default {
   sendDonationRequestMail: async (email, donation) => {
     const subject = `Donation Request ${donation.donarName || "Anonymous"}`;
@@ -46,9 +67,10 @@ export default {
     const data = {
       name: donation.donarName || "Anonymous",
       items: donation.items,
-      donatedAt: new Date(donation.createdAt).toISOString(),
+      donatedAt: new Date().toISOString(),
     };
-    return sendEmail(email, subject, templatePath, data);
+    return sendEmail(email, subject, templatePath, {});
+
   },
 
   sendDonationConfomationMail: async (email, donation) => {

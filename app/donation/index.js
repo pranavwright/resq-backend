@@ -41,7 +41,7 @@ const donationRoute = (fastify, options, done) => {
           }
         )
         .toArray();
-      reply.send(list);
+      reply.send({list});
     } catch (error) {
       reply.status(500).send({ message: error.message });
     }
@@ -61,7 +61,6 @@ const donationRoute = (fastify, options, done) => {
       if (
         !donarName ||
         !donarEmail ||
-        !donarAddress ||
         !items ||
         !Array.isArray(items) ||
         items.length === 0

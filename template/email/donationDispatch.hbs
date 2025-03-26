@@ -1,0 +1,152 @@
+<!DOCTYPE html>  <html lang="en">  
+<head>  
+    <meta charset="UTF-8">  
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">  
+    <title>Resq - Thank You for Your Donation</title>  
+    <script src="https://unpkg.com/lucide@latest"></script>  
+    <style>  
+        * {  
+            margin: 0;  
+            padding: 0;  
+            box-sizing: border-box;  
+            font-family: Arial, sans-serif;  
+        }  
+        body {  
+            min-height: 100vh;  
+            background: linear-gradient(to bottom, #22c55e, #15803d);  
+            display: flex;  
+            flex-direction: column;  
+            align-items: center;  
+            justify-content: center;  
+            text-align: center;  
+            padding: 20px;  
+        }  
+        .container {  
+            width: 100%;  
+            max-width: 400px;  
+            color: white;  
+        }  
+        .header {  
+            display: flex;  
+            justify-content: center;  
+            padding: 10px;  
+            margin-bottom: 20px;  
+        }  
+        .app-logo {  
+            max-width: 150px;  
+            margin-bottom: 10px;  
+        }  
+        .app-logo img {  
+            width: 100%;  
+            height: auto;  
+        }  
+        .icon-container {  
+            background: white;  
+            padding: 20px;  
+            border-radius: 50%;  
+            display: inline-block;  
+            margin-bottom: 20px;  
+            animation: pulse 1.5s infinite;  
+        }  
+        .icon-container svg {  
+            color: #22c55e;  
+            width: 50px;  
+            height: 50px;  
+        }  
+        @keyframes pulse {  
+            0% { transform: scale(1); }  
+            50% { transform: scale(1.1); }  
+            100% { transform: scale(1); }  
+        }  
+        h1 {  
+            font-size: 24px;  
+            font-weight: bold;  
+            margin-bottom: 10px;  
+        }  
+        p {  
+            opacity: 0.9;  
+            font-size: 14px;  
+            margin-bottom: 20px;  
+        }  
+        .impact-section {  
+            background: rgba(255, 255, 255, 0.2);  
+            padding: 15px;  
+            border-radius: 10px;  
+            margin-bottom: 20px;  
+        }  
+        .impact-section h2 {  
+            font-size: 16px;  
+            display: flex;  
+            align-items: center;  
+            justify-content: center;  
+            font-weight: bold;  
+        }  
+        .impact-section h2 svg {  
+            color: #facc15;  
+            margin-right: 5px;  
+        }  
+        .impact-list {  
+            display: flex;  
+            flex-direction: column;  
+            gap: 10px;  
+        }  
+        .impact-item {  
+            display: flex;  
+            justify-content: space-between;  
+            align-items: center;  
+            background: rgba(255, 255, 255, 0.1);  
+            padding: 10px;  
+            border-radius: 8px;  
+        }  
+        .impact-item-name {  
+            flex-grow: 1;  
+            text-align: left;  
+            font-size: 14px;  
+        }  
+        .impact-item-quantity {  
+            font-weight: bold;  
+            font-size: 16px;  
+            min-width: 50px;  
+            text-align: right;  
+        }  
+    </style>  
+</head>  
+<body>  <div class="container">  
+    <!-- Header -->  
+    <div class="header">  
+        <div class="app-logo">  
+            <img src="https://storage.googleapis.com/resq_user_images/logo.jpg" style="border-radius: 10;" alt="Resq Logo" />  
+        </div>  
+    </div>  
+
+    <!-- Main Content -->  
+    <div class="icon-container">  
+        <i data-lucide="heart"></i>  
+    </div>  
+
+    <h1>Thank You for Your Donation!</h1>  
+    <p>Your generosity makes a real difference in people's lives. Every contribution helps us create positive change.</p>  
+
+    <!-- Impact Section -->  
+    <div class="impact-section">  
+        <h2>  
+            <i data-lucide="award"></i> Your Impact  
+        </h2>  
+        <div class="impact-list">  
+            {{#each impactItems}}
+            <div class="impact-item">  
+                <div class="impact-item-name">{{name}}</div>  
+                <div class="impact-item-quantity">{{quantity}}</div>
+            </div>
+            {{/each}}
+         
+        </div>  
+    </div>  
+</div>  
+
+<script>  
+    lucide.createIcons();  
+</script>
+
+</body>  
+</html>  

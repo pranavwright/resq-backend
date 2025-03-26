@@ -25,6 +25,112 @@ const disasterRoute = (fastify, options, done) => {
         isUserAllowed(fastify, req, reply, ["superAdmin", "admin", 'stat']),
     ],
   };
+
+  
+fastify.get('/getDisasterData', async (req, reply) => {
+  try {
+      const { disasterId } = req.query;
+
+      if (!disasterId) {
+          return reply.status(400).send({ message: "Disaster ID is required" });
+      }
+
+
+      const disasterData = await fastify.mongo.db.collection('disasters').aggregate([
+          {
+              $match: {
+                  _id: disasterId
+              }
+          },
+          {
+              $lookup: {
+                  from: 'camps',
+                  localField: '_id',
+                  foreignField: 'disasterId',
+                  as: 'camps'
+              }
+          },
+          {
+              $lookup: {
+                  from: 'collectionPoints',
+                  localField: '_id',
+                  foreignField: 'disasterId',
+                  as: 'collectionPoints'
+              }
+          },
+          {
+              $lookup: {
+                  from: 'members',
+                  localField: '_id',
+                  foreignField: 'disasterId',
+                  as: 'members'
+              }
+          },
+          {
+              $lookup: {
+                  from: 'items',
+                  localField: '_id',
+                  foreignField: 'disasterId',
+                  as: 'items'
+              }
+          },
+          {
+              $project: {
+                  _id: 1,
+                  name: 1,
+                  description: 1,
+                  location: 1,
+                  startDate: 1,
+                  endDate: 1,
+                  status: 1,
+                  state: 1,
+                  district: 1,
+                  severity: 1,
+                  type: 1,
+                  campsCount: { $size: '$camps' },
+                  collectionPointsCount: { $size: '$collectionPoints' },
+                  alive: {
+                      $size: {
+                          $filter: {
+                              input: '$members',
+                              as: 'member',
+                              cond: { $eq: ['$$member.status', 'alive'] }
+                          }
+                      }
+                  },
+                  dead: {
+                      $size: {
+                          $filter: {
+                              input: '$members',
+                              as: 'member',
+                              cond: { $eq: ['$$member.status', 'dead'] }
+                          }
+                      }
+                  },
+                  missing: {
+                      $size: {
+                          $filter: {
+                              input: '$members',
+                              as: 'member',
+                              cond: { $eq: ['$$member.status', 'missing'] }
+                          }
+                      }
+                  },
+                  items: 1
+              }
+          }
+      ]).toArray(); 
+
+      if (disasterData.length === 0) {
+          return reply.status(404).send({ message: "Disaster not found" });
+      }
+
+      reply.send(disasterData[0]); 
+  } catch (error) {
+      console.error("Error fetching disaster data:", error);
+      reply.status(500).send({ message: "Internal Server Error" });
+  }
+});
   fastify.post("/postDisaster", isSuperAdmin, async (req, reply) => {
     try {
       const {
@@ -158,7 +264,7 @@ const disasterRoute = (fastify, options, done) => {
   fastify.get('/getCamps',isAdmin, async (req,reply) => {
     try {
       const {disasterId} =req.query;
-      const list = await fastify.mongo.db.collection('camps').find({disasterId}).toArray();
+      const list = await fastify.mongo.db.collection('camps').find({disasterId, status: "active"}).toArray();
       reply.send(list)
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
@@ -210,7 +316,7 @@ const disasterRoute = (fastify, options, done) => {
       const { disasterId } = req.query;
       const list = await fastify.mongo.db
         .collection("collectionPoints")
-        .find({ disasterId })
+        .find({ disasterId, status: "active" })
         .toArray();
       reply.send(list);
     } catch (error) {

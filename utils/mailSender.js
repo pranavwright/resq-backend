@@ -34,13 +34,6 @@ const sendEmail = async (to, subject, templatePathOrHtml, data = {}) => {
       html = templatePathOrHtml; // If direct HTML string is provided
     }
 
-    const browser = await puppeteer.launch({
-      headless: "new",
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-
     const mailOptions = {
       from: process.env.EMAIL,
       to,
@@ -49,8 +42,7 @@ const sendEmail = async (to, subject, templatePathOrHtml, data = {}) => {
       html,
     };
 
-    console.log("Generated Email HTML:", html);
-    const res = await transporter.sendMail(mailOptions);
+     await transporter.sendMail(mailOptions);
     console.log(`Email sent to ${to} with subject "${subject}"`);
     return true;
   } catch (error) {

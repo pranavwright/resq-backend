@@ -338,7 +338,7 @@ const disasterRoute = (fastify, options, done) => {
       const { disasterId } = req.query;
       const list = await fastify.mongo.db
         .collection("collectionPoints")
-        .find({ disasterId, status: "active" })
+        .find({ disasterId,})
         .toArray();
       reply.send(list);
     } catch (error) {

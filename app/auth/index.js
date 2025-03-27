@@ -89,6 +89,29 @@ const authRoute = (fastify, options, done) => {
               },
             }
           );
+          if (assignPlace) {
+            if (role.includes("campAdmin")) {
+              await fastify.mongo.db.collection("camps").updateOne(
+                { _id: assignPlace },
+                {
+                  $set: {
+                    campAdmin: isUser._id,
+                    contact: phoneNumber,
+                  },
+                }
+              );
+            } else if (role.includes("collectionPointAdmin")) {
+              await fastify.mongo.db.collection("collectionPoints").updateOne(
+                { _id: assignPlace },
+                {
+                  $set: {
+                    collectionAdmin: isUser._id,
+                    contact: phoneNumber,
+                  },
+                }
+              );
+            }
+          }
         } else {
           await fastify.mongo.db.collection("users").insertOne({
             _id: customIdGenerator("USR"),
@@ -103,6 +126,29 @@ const authRoute = (fastify, options, done) => {
             ],
             createdBy: uid,
           });
+        }
+        if (assignPlace) {
+          if (role.includes("campAdmin")) {
+            await fastify.mongo.db.collection("camps").updateOne(
+              { _id: assignPlace },
+              {
+                $set: {
+                  campAdmin: isUser._id,
+                  contact: phoneNumber,
+                },
+              }
+            );
+          } else if (role.includes("collectionPointAdmin")) {
+            await fastify.mongo.db.collection("collectionPoints").updateOne(
+              { _id: assignPlace },
+              {
+                $set: {
+                  collectionAdmin: isUser._id,
+                  contact: phoneNumber,
+                },
+              }
+            );
+          }
         }
         return reply.status(200).send({ message: "User created successfully" });
       } else {
@@ -128,6 +174,29 @@ const authRoute = (fastify, options, done) => {
                 $set: { "roles.$.assignPlace": assignPlace },
               }
             );
+            if (assignPlace) {
+              if (role.includes("campAdmin")) {
+                await fastify.mongo.db.collection("camps").updateOne(
+                  { _id: assignPlace },
+                  {
+                    $set: {
+                      campAdmin: isUser._id,
+                      contact: phoneNumber,
+                    },
+                  }
+                );
+              } else if (role.includes("collectionPointAdmin")) {
+                await fastify.mongo.db.collection("collectionPoints").updateOne(
+                  { _id: assignPlace },
+                  {
+                    $set: {
+                      collectionAdmin: isUser._id,
+                      contact: phoneNumber,
+                    },
+                  }
+                );
+              }
+            }
             return reply
               .status(200)
               .send({ message: "Role added successfully" });
@@ -147,6 +216,29 @@ const authRoute = (fastify, options, done) => {
               },
             }
           );
+          if (assignPlace) {
+            if (role.includes("campAdmin")) {
+              await fastify.mongo.db.collection("camps").updateOne(
+                { _id: assignPlace },
+                {
+                  $set: {
+                    campAdmin: isUser._id,
+                    contact: phoneNumber,
+                  },
+                }
+              );
+            } else if (role.includes("collectionPointAdmin")) {
+              await fastify.mongo.db.collection("collectionPoints").updateOne(
+                { _id: assignPlace },
+                {
+                  $set: {
+                    collectionAdmin: isUser._id,
+                    contact: phoneNumber,
+                  },
+                }
+              );
+            }
+          }
           return reply
             .status(200)
             .send({ message: "Disaster role added successfully" });
@@ -269,18 +361,16 @@ const authRoute = (fastify, options, done) => {
         );
 
         if (success) {
-          await fastify.mongo.db
-            .collection("users")
-            .updateOne(
-              { _id: uid },
-              {
-                $set: {
-                  photoUrl: url,
-                  ...(emailId && { emailId }),
-                  ...(name & { name }),
-                },
-              }
-            );
+          await fastify.mongo.db.collection("users").updateOne(
+            { _id: uid },
+            {
+              $set: {
+                photoUrl: url,
+                ...(emailId && { emailId }),
+                ...(name & { name }),
+              },
+            }
+          );
           reply
             .status(200)
             .send({ message: "User updated successfully", photoUrl: url });
@@ -521,7 +611,9 @@ const authRoute = (fastify, options, done) => {
         .find({ _id: { $in: _ids }, "roles.disasterId": disasterId })
         .toArray();
 
-        const disaster = await fastify.mongo.db.collection("disasters").findOne({_id:disasterId});
+      const disaster = await fastify.mongo.db
+        .collection("disasters")
+        .findOne({ _id: disasterId });
       if (users.length === 0) {
         return reply.status(404).send({ error: "Users not found" });
       }

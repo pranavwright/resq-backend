@@ -41,7 +41,31 @@ const donationRoute = (fastify, options, done) => {
           }
         )
         .toArray();
-      reply.send({list});
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  });
+  fastify.get("/inventoryItems",isDonationAdmin, async (req, reply) => {
+    try {
+      const { disasterId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("items")
+        .find({ disasterId })
+        .toArray();
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  });
+  fastify.get("/generalDonationRequest",isDonationAdmin, async (req, reply) => {
+    try {
+      const { disasterId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("generalDonation")
+        .find({ disasterId })
+        .toArray();
+      reply.send({ list });
     } catch (error) {
       reply.status(500).send({ message: error.message });
     }
@@ -113,7 +137,6 @@ const donationRoute = (fastify, options, done) => {
         .collection("items")
         .find({ _id: { $in: allDonatedItemIds } })
         .toArray();
-      
 
       try {
         await mailSender.sendDonationRequestMail(donarEmail, {
@@ -159,31 +182,28 @@ const donationRoute = (fastify, options, done) => {
         .collection("generalDonation")
         .updateOne({ _id: donationId, disasterId }, { $set: { status } });
 
-        
-        const donation = await fastify.mongo.db
+      const donation = await fastify.mongo.db
         .collection("generalDonation")
         .findOne({ _id: donationId, disasterId });
-        
-        await fastify.mongo.db
-        .collection("items")
-        .update
-        try {
-          await mailSender.sendDonationDispatchMail(donation.donarEmail, {
-            donationItems: donationItemsForEmail,
-            donarName,
-            donarEmail,
-            donarAddress,
-            status,
-            disasterId,
-            donarPhone,
-            donatedAt: new Date(),
-          });
-        } catch (error) {
-          console.error("Error sending donation request email:", emailError);
-          return reply
-            .status(200)
-            .send({ message: "Donation added successfully but mail did't send" });
-        }
+
+      await fastify.mongo.db.collection("items").update;
+      try {
+        await mailSender.sendDonationDispatchMail(donation.donarEmail, {
+          donationItems: donationItemsForEmail,
+          donarName,
+          donarEmail,
+          donarAddress,
+          status,
+          disasterId,
+          donarPhone,
+          donatedAt: new Date(),
+        });
+      } catch (error) {
+        console.error("Error sending donation request email:", emailError);
+        return reply
+          .status(200)
+          .send({ message: "Donation added successfully but mail did't send" });
+      }
       reply.status(200).send({ message: "Donation status updated" });
     } catch (error) {
       reply.status(500).send({ message: error.message });
@@ -192,7 +212,7 @@ const donationRoute = (fastify, options, done) => {
   fastify.post("/confromDonation", isDonationAdmin, async (req, reply) => {
     try {
       const { donationId, status } = req.body;
-      if (!donationId || !status=== "dispatched") {
+      if (!donationId || !status === "dispatched") {
         return reply.status(400).send({ message: "All fields are required" });
       }
 
@@ -204,23 +224,23 @@ const donationRoute = (fastify, options, done) => {
         .collection("generalDonation")
         .findOne({ _id: donationId, disasterId });
 
-        try {
-          await mailSender.sendDonationConfomationMail(donation.donarEmail, {
-            donationItems: donationItemsForEmail,
-            donarName,
-            donarEmail,
-            donarAddress,
-            status: "pending",
-            disasterId,
-            donarPhone,
-            donatedAt: new Date(),
-          });
-        } catch (error) {
-          console.error("Error sending donation request email:", emailError);
-          return reply
-            .status(200)
-            .send({ message: "Donation added successfully but mail did't send" });
-        }
+      try {
+        await mailSender.sendDonationConfomationMail(donation.donarEmail, {
+          donationItems: donationItemsForEmail,
+          donarName,
+          donarEmail,
+          donarAddress,
+          status: "pending",
+          disasterId,
+          donarPhone,
+          donatedAt: new Date(),
+        });
+      } catch (error) {
+        console.error("Error sending donation request email:", emailError);
+        return reply
+          .status(200)
+          .send({ message: "Donation added successfully but mail did't send" });
+      }
       reply.status(200).send({ message: "Donation status updated" });
     } catch (error) {
       reply.status(500).send({ message: error.message });

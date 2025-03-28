@@ -67,13 +67,13 @@ export default {
 
   sendDonationConfomationMail: async (email, donation) => {
     const subject = `Donation Confirmation ${
-      donation.donarName || "Anonymous"
+      donation?.donarName || "Anonymous"
     }`;
     const templatePath = "../template/email/donationConfirmation.hbs";
     const data = {
-      name: donation.donarName || "Anonymous",
-      items: donation.items,
-      donatedAt: new Date(donation.estimate).toISOString(),
+      name: donation?.donarName || "Anonymous",
+      items: donation?.donationItems,
+      donatedAt: donation.estimate=="Invalid Date"? new Date(donation.estimate).toISOString(): new Date().toISOString(),
     };
     return sendEmail(email, subject, templatePath, data);
   },
@@ -83,7 +83,7 @@ export default {
     const templatePath = "../template/email/donationDispatch.hbs";
     const data = {
       name: donation.donarName || "Anonymous",
-      items: donation.items,
+      items: donation.donationItems,
       donatedAt: new Date(donation.deleverdAt).toISOString(),
     };
     return sendEmail(email, subject, templatePath, data);

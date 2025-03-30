@@ -17,7 +17,7 @@ const settingsRoute = (fastify, options, done) => {
   };
   const isSurvey = {
     preHandler: [
-      (req, reply) => isUserAllowed(fastify, req, reply, ["familySurvey"]),
+      (req, reply) => isUserAllowed(fastify, req, reply, ["surveyOfficial"]),
     ],
   };
   const isAdmin = {

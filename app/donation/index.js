@@ -335,6 +335,48 @@ const donationRoute = (fastify, options, done) => {
     }
   });
 
+  fastify.get('/campDonationRequest', isDonationAdmin, async(req, reply)=>{
+    try {
+      const {disasterId} = req.query;
+
+      const list = await fastify.mongo.db.collection('campRequests').aggregate([
+        {
+          $match: {
+            disasterId: disasterId,
+          },
+        },
+
+        {
+          $lookup: {
+            from: "items",
+            localField: "donatedItems.itemId",
+            foreignField: "_id",
+            as: "donated",
+          },
+        },
+      ])
+      .toArray();
+    const formattedList = list.map((donation) => {
+      const donatedItems = donation.donated.map((item) => {
+        const matchedItem = donation.donatedItems.find(
+          (donatedItem) => donatedItem.itemId === item._id
+        );
+        return {
+          ...item,
+          quantity: matchedItem ? matchedItem.quantity : 0,
+        };
+      });
+      return {
+        ...donation,
+        donatedItems,
+      };
+    });
+    reply.send({ list: formattedList });
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  })
+
   done();
 };
 export default donationRoute;

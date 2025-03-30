@@ -276,13 +276,27 @@ const disasterRoute = (fastify, options, done) => {
       const { disasterId } = req.query;
       const list = await fastify.mongo.db
         .collection("camps")
-        .find({ disasterId, })
+        .find({ disasterId })
         .toArray();
       reply.send(list);
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
+
+  fastify.get("/getCampNames", isAuthUser, async (req, reply) => {
+    try {
+      const { disasterId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("camps")
+        .find({ disasterId }, { projection: { _id: 1, name: 1 } })
+        .toArray();
+      reply.send({list});
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
   fastify.post("/postCollectionPoint", isAdmin, async (req, reply) => {
     try {
       const {
@@ -338,7 +352,7 @@ const disasterRoute = (fastify, options, done) => {
       const { disasterId } = req.query;
       const list = await fastify.mongo.db
         .collection("collectionPoints")
-        .find({ disasterId,})
+        .find({ disasterId })
         .toArray();
       reply.send(list);
     } catch (error) {

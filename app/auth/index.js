@@ -152,6 +152,9 @@ const authRoute = (fastify, options, done) => {
         }
         return reply.status(200).send({ message: "User created successfully" });
       } else {
+        const isUser = await fastify.mongo.db.collection("users").findOne({
+          phoneNumber,
+        });
         const existingRole = existingUser.roles.find(
           (r) => r.disasterId === disasterId
         );
@@ -510,12 +513,19 @@ const authRoute = (fastify, options, done) => {
         .toArray();
 
       users.forEach((user) => {
-        if (user.roles.disasterId == disasterId) {
+        if (user.roles && user.roles.disasterId == disasterId) {
           user.assignedRoles = user.roles.roles;
-          user.assignedPlace = user.camp || user.collectionPoint;
+          user.assignPlace = user.camp || user.collectionPoint;
         }
       });
-      reply.send(users);
+
+      const user = users.filter((user) => {
+        if (user.roles && user.roles.disasterId == disasterId) {
+          return user;
+        }
+      });
+
+      reply.send(user);
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }
@@ -580,6 +590,11 @@ const authRoute = (fastify, options, done) => {
         {
           $pull: {
             "roles.$.roles": role,
+          },
+          $set: {
+            ...((role == "campAdmin" || role == "collectionPointAdmin") && {
+              "roles.$.assignPlace": null,
+            }),
           },
         }
       );

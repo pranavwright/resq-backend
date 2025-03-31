@@ -19,10 +19,9 @@ const familyRoute = (fastify, options, done) => {
       (req, reply) => isUserAllowed(fastify, req, reply, ["surveyOfficial"]),
     ],
   };
-  const isAdmin = {
+  const isStat = {
     preHandler: [
-      (req, reply) =>
-        isUserAllowed(fastify, req, reply, ["superAdmin", "admin"]),
+      (req, reply) => isUserAllowed(fastify, req, reply, ["stat", "admin"]),
     ],
   };
   const isRoomAdmins = {
@@ -39,7 +38,7 @@ const familyRoute = (fastify, options, done) => {
 
   fastify.post("/addFamily", isSurvey, async (req, reply) => {
     try {
-      const { _id, members, uid, disasterId } = req.body;
+      const { _id, members, uid, disasterId, loanDetails } = req.body;
       if (!disasterId) {
         return reply.status(400).send({ message: "disasterId required" });
       }
@@ -49,6 +48,7 @@ const familyRoute = (fastify, options, done) => {
       delete famData.members;
       delete famData.disasterId;
       delete famData.uid;
+      delete famData.loanDetails;
       if (_id) {
         await fastify.mongo.db.collection("family").updateOne(
           { _id, disasterId },
@@ -61,12 +61,43 @@ const familyRoute = (fastify, options, done) => {
         );
 
         for (const member of members) {
-          await fastify.mongo.db.collection("members").insertOne(
-            { familyId: _id, _id: member._id, disasterId },
-            {
+          const isUpdated = await fastify.mongo.db
+            .collection("members")
+            .updateOne(
+              { familyId: _id, _id: member._id, disasterId },
+              {
+                $set: { ...member, updatedBy: uid },
+              }
+            );
+          if (isUpdated.modifiedCount == 0) {
+            await fastify.mongo.db.collection("members").insertOne({
+              _id: customIdGenerator("MEM"),
+              disasterId,
+              familyId: _id,
+              createdBy: uid,
               ...member,
-            }
-          );
+            });
+          }
+        }
+        for (const loan of loanDetails) {
+          const isUpdated = await fastify.mongo.db
+            .collection("loans")
+            .insertOne({
+              _id: customIdGenerator("LOAN"),
+              disasterId,
+              familyId: family.insertedId,
+              createdBy: uid,
+              ...loan,
+            });
+          if (isUpdated.modifiedCount == 0) {
+            await fastify.mongo.db.collection("loans").insertOne({
+              _id: customIdGenerator("LOAN"),
+              disasterId,
+              familyId: _id,
+              createdBy: uid,
+              ...loan,
+            });
+          }
         }
       } else {
         const family = await fastify.mongo.db.collection("family").insertOne({
@@ -82,6 +113,15 @@ const familyRoute = (fastify, options, done) => {
             familyId: family.insertedId,
             createdBy: uid,
             ...member,
+          });
+        }
+        for (const loan of loanDetails) {
+          await fastify.mongo.db.collection("loans").insertOne({
+            _id: customIdGenerator("LOAN"),
+            disasterId,
+            familyId: family.insertedId,
+            createdBy: uid,
+            ...loan,
           });
         }
       }
@@ -205,6 +245,30 @@ const familyRoute = (fastify, options, done) => {
         ])
         .toArray();
 
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+  fastify.get("/getAllFamilies", isStat, async (req, reply) => {
+    try {
+      const { disasterId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("family")
+        .aggregate([
+          {
+            $match: { disasterId },
+          },
+          {
+            $lookup: {
+              from: "members",
+              localField: "_id",
+              foreignField: "familyId",
+              as: "members",
+            },
+          },
+        ])
+        .toArray();
       reply.send({ list });
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });

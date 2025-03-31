@@ -279,7 +279,7 @@ const authRoute = (fastify, options, done) => {
   });
   fastify.post("/verifyFirebaseToken", async (req, reply) => {
     try {
-      const { firebaseToken } = req.body;
+      const { firebaseToken, fcmToken } = req.body;
       const decodedToken = await admin.auth().verifyIdToken(firebaseToken);
 
       if (!decodedToken.uid || !decodedToken.phone_number) {
@@ -293,6 +293,11 @@ const authRoute = (fastify, options, done) => {
       const user = await fastify.mongo.db
         .collection("users")
         .findOne({ phoneNumber: `${numberOnly}` });
+
+        await fastify.mongo.db.collection("users").updateOne(
+          { phoneNumber: `${numberOnly}` },
+          { $set: { fcmToken: fcmToken } }
+        );
 
       const jwtToken = fastify.jwt.sign({
         phoneNumber: decodedToken.phone_number,

@@ -36,7 +36,7 @@ const donationRoute = (fastify, options, done) => {
         .find(
           { disasterId },
           {
-            projection: {
+            project: {
               _id: 1,
               name: 1,
               description: 1,
@@ -576,62 +576,63 @@ const donationRoute = (fastify, options, done) => {
 
   fastify.post("/campDonationRequest", isCampAdmin, async (req, reply) => {
     try {
-      const { campId, disasterId, items, notes, priority, pickUpDate } =
-        req.body;
-
-      // Validate required fields
-      if (
-        !campId ||
-        !disasterId ||
-        !items ||
-        !Array.isArray(items) ||
-        items.length === 0
-      ) {
+      const {
+        disasterId,
+        items,
+        campId,
+        pickUpDate,
+        notes,
+        priority,
+        _id,
+        uid,
+        status,
+      } = req.body;
+      if (!disasterId || !items || !campId || !pickUpDate || !priority) {
         return reply.status(400).send({ message: "All fields are required" });
       }
-
-      // Validate and log item IDs
-      for (const item of items) {
-        if (!item.itemId) {
-          console.error("Missing itemId for item:", item);
-          return reply
-            .status(400)
-            .send({ message: "Each item must have a valid itemId" });
-        }
+      if (_id) {
+        await fastify.mongo.db.collection("campRequests").updateOne(
+          { _id, disasterId },
+          {
+            $set: {
+              items,
+              confirmDate: new Date(pickUpDate),
+              notes,
+              priority,
+              updatedBy: uid,
+              status,
+            },
+          }
+        );
+        return reply
+          .status(200)
+          .send({ message: "Donation request updated successfully" });
       }
-
-      // Insert the camp donation request
-      const result = await fastify.mongo.db
-        .collection("campRequests")
-        .insertOne({
-          _id: customIdGenerator("CRQ"),
-          campId,
-          disasterId,
-          items: items.map((item) => ({
-            itemId: item.itemId,
-            quantity: item.quantity,
-          })),
-          notes,
-          priority,
-          pickUpDate: pickUpDate ? new Date(pickUpDate) : null,
-          status: "pending",
-          createdAt: new Date(),
-        });
-
-      reply.status(200).send({ success: true, requestId: result.insertedId });
+      await fastify.mongo.db.collection("campRequests").insertOne({
+        _id: customIdGenerator("CRQ"),
+        disasterId,
+        campId,
+        requestedAt: new Date(),
+        items,
+        status: "pending",
+        confirmDate: new Date(pickUpDate),
+        notes,
+        createdBy: uid,
+        priority,
+      });
+      reply.status(200).send({ message: "Donation request sent successfully" });
     } catch (error) {
-      console.error("Error in /campDonationRequest:", error);
+      console.error("Error in camp donation request:", error);
       reply.status(500).send({ message: error.message });
     }
   });
-
   fastify.get("/campDonationRequest", isCampAdmin, async (req, reply) => {
     try {
       const { disasterId, campId } = req.query;
       if (!disasterId || !campId) {
         return reply.status(400).send({ message: "All fields are required" });
       }
-      const requests = await fastify.mongo.db
+      const donation = await fastify.mongo.db
         .collection("campRequests")
         .aggregate([
           { $match: { disasterId, campId } },
@@ -651,33 +652,33 @@ const donationRoute = (fastify, options, done) => {
               notes: 1,
               requestedAt: 1,
               priority: 1,
-              items: 1,
-              invetory: 1,
-              createdAt: 1,
-              pickUpDate: 1,
+              items: {
+                $map: {
+                  input: "$items",
+                  as: "item",
+                  in: {
+                    itemId: "$$item.itemId",
+                    quantity: "$$item.quantity",
+                    name: {
+                      $arrayElemAt: [
+                        {
+                          $filter: {
+                            input: "$invetory",
+                            as: "inv",
+                            cond: { $eq: ["$$inv._id", "$$item.itemId"] },
+                          },
+                        },
+                        0,
+                      ],
+                    },
+                  },
+                },                
+              },
             },
           },
         ])
         .toArray();
-
-      const formattedRequests = requests.map((request) => {
-        const items = request.items.map((item) => {
-          const matchedItem = request.invetory.find(
-            (invItem) => invItem._id === item.itemId
-          );
-          return {
-            ...item,
-            name: matchedItem ? matchedItem.name : "Unknown Item",
-            unit: matchedItem ? matchedItem.unit : "Unknown Unit",
-            category: matchedItem ? matchedItem.category : "Unknown Category",
-          };
-        });
-        return {
-          ...request,
-          items,
-        };
-      });
-      reply.send({ requests: formattedRequests });
+      reply.send(donation);
     } catch (error) {
       console.error("Error in fetching camp donation requests:", error);
       reply.status(500).send({ message: error.message });

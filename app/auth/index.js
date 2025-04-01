@@ -33,9 +33,14 @@ const authRoute = (fastify, options, done) => {
         isUserAllowed(fastify, req, reply, [
           "superAdmin",
           "admin",
-          "campAdmin",
           "stat",
-          "kas",
+        ]),
+    ],
+  };
+  const isCollectionPoint = {
+    preHandler: [
+      (req, reply) =>
+        isUserAllowed(fastify, req, reply, [
           "collectionPointAdmin",
         ]),
     ],
@@ -49,6 +54,7 @@ const authRoute = (fastify, options, done) => {
         disasterId,
         assignPlace,
         uid,
+        label,
       } = req.body;
 
       let role = roles;
@@ -87,6 +93,9 @@ const authRoute = (fastify, options, done) => {
                   assignPlace,
                 },
               },
+              $set: {
+                ...(label && { label }),
+              },
             }
           );
           if (assignPlace) {
@@ -124,6 +133,7 @@ const authRoute = (fastify, options, done) => {
                 assignPlace,
               },
             ],
+            label,
             createdBy: uid,
           });
         }
@@ -174,7 +184,7 @@ const authRoute = (fastify, options, done) => {
               },
               {
                 $push: { "roles.$.roles": { $each: role } },
-                $set: { "roles.$.assignPlace": assignPlace },
+                $set: { "roles.$.assignPlace": assignPlace, label },
               }
             );
             if (assignPlace) {
@@ -217,6 +227,7 @@ const authRoute = (fastify, options, done) => {
                   assignPlace,
                 },
               },
+              $set: { ...(label && { label }) },
             }
           );
           if (assignPlace) {
@@ -294,7 +305,9 @@ const authRoute = (fastify, options, done) => {
         .collection("users")
         .findOne({ phoneNumber: `${numberOnly}` });
 
-        await fastify.mongo.db.collection("users").updateOne(
+      await fastify.mongo.db
+        .collection("users")
+        .updateOne(
           { phoneNumber: `${numberOnly}` },
           { $set: { fcmToken: fcmToken } }
         );
@@ -650,6 +663,81 @@ const authRoute = (fastify, options, done) => {
           .status(500)
           .send({ error: `Internal server error: ${error.message}` });
       }
+    }
+  });
+
+  fastify.post("/addVolunteer", isCollectionPoint, async (req, reply) => {
+    try {
+      const { disasterId, pointId, name, phoneNumber, uid } = req.body;
+
+      if (!disasterId || !phoneNumber) {
+        return reply.status(400).send({ message: "All fields are required" });
+      }
+      let assignPlace = pointId;
+
+      if (!assignPlace) {
+        const user = await fastify.mongo.db
+          .collection("users")
+          .findOne({ _id: uid, "roles.disasterId": disasterId });
+        assignPlace = user?.roles?.find(
+          (role) => role.disasterId == disasterId
+        )?.assignPlace;
+      }
+
+      if (!assignPlace) {
+        reply.status(400).send({ message: "unautherised" });
+      }
+
+      const checkVolenteer = await fastify.mongo.db
+        .collection("users")
+        .findOne({ phoneNumber });
+
+      if (checkVolenteer) {
+        if (
+          checkVolenteer.roles
+            .find((role) => role.disasterId == disasterId)
+            .roles.includes("collectionpointvolunteer")
+        ) {
+          return reply.status(400).send({ message: "User already exists" });
+        } else if (
+          checkVolenteer.roles.some((role) => role.disasterId != disasterId)
+        ) {
+          await fastify.mongo.db.collection("users").updateOne(
+            { phoneNumber },
+            {
+              $push: {
+                roles: {
+                  disasterId,
+                  roles: ["collectionpointvolunteer"],
+                  assignPlace,
+                },
+              },
+              $set: {
+                label: "volunteer",
+              },
+            }
+          );
+        }
+      } else {
+        await fastify.mongo.db.collection("users").insertOne({
+          _id: customIdGenerator("USR"),
+          name,
+          phoneNumber,
+          roles: [
+            {
+              disasterId,
+              roles: ["collectionpointvolunteer"],
+              assignPlace,
+            },
+          ],
+          label: "volunteer",
+          createdBy: uid,
+        });
+      }
+    } catch (error) {
+      reply
+        .status(500)
+        .send({ message: "Internal Server Error", error: error.message });
     }
   });
 

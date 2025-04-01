@@ -66,6 +66,9 @@ export default {
   },
 
   sendDonationConfomationMail: async (email, donation) => {
+    if(email==""){
+      return;
+    }
     const subject = `Donation Confirmation ${
       donation?.donarName || "Anonymous"
     }`;

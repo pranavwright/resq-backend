@@ -6,3 +6,5 @@
 yarn.lock
 service-account.json
 resqhub-wright-firebase-adminsdk.json
+utils/.DS_Store
+.DS_Store

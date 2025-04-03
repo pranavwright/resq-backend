@@ -2,13 +2,16 @@ import fastifyCors from "@fastify/cors";
 import AutoLoad from "@fastify/autoload";
 import Fastify from "fastify";
 import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import path, { dirname, join } from "path";
 import { MONGODB_URL } from "./configs/index.js";
 import FastifyMongoDB from "@fastify/mongodb";
 import "dotenv/config";
 import fastifyMultipart from "@fastify/multipart";
 import fastifyJwt from "@fastify/jwt";
 import { customIdGenerator } from "./utils/idGenerator.js";
+import { cert, initializeApp } from "firebase-admin/app";
+import { readFileSync, } from "fs";
+import { getAuth } from "firebase-admin/auth";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -16,6 +19,26 @@ const __dirname = dirname(__filename);
 const fastify = Fastify({ logger: false });
 const PORT = process.env.PORT || 5000;
 const HOST = process.env.HOST || "::";
+
+
+try {
+  const serviceAccount = JSON.parse(readFileSync(path.join(__dirname, "/service-account.json"), 'utf8'));
+  const firebaseApp = initializeApp({
+    credential: cert(serviceAccount),
+  });
+  const auth = getAuth(firebaseApp);
+
+  
+  // Set the credentials path for Google Cloud libraries
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = path.join(__dirname, "/service-account.json");
+  
+  fastify.decorate('firebase', firebaseApp);
+  fastify.decorate('firebaseAuth', auth);
+  console.log('Firebase app initialized successfully.');
+} catch (error) {
+  console.error('Error initializing Firebase app:', error);
+  process.exit(1);
+}
 
 fastify.register(fastifyMultipart, {
   limits: { fileSize: 150 * 1024 * 1024 },

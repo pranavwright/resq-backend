@@ -672,7 +672,7 @@ const donationRoute = (fastify, options, done) => {
                       ],
                     },
                   },
-                },                
+                },
               },
             },
           },
@@ -684,6 +684,224 @@ const donationRoute = (fastify, options, done) => {
       reply.status(500).send({ message: error.message });
     }
   });
+
+  fastify.get("/getArrivedItems", async (req, reply) => {
+    try {
+      const { disasterId } = req.query;
+      if (!disasterId) {
+        return reply.status(400).send({ message: "disasterId is required" });
+      }
+      const user = await authenticatedUser(fastify, req, reply);
+      if (!user) {
+        return reply.status(401).send({ message: "Unauthorized" });
+      }
+
+      const assignPlace = user.roles.find(
+        (role) => disasterId == role.disasterId
+      )?.assignPlace;
+
+      if (!assignPlace) {
+        return reply
+          .status(400)
+          .send({ message: "You are not assigned to this disaster" });
+      }
+
+      const [incomming, outgoing, items] = await Promise.all([
+        await fastify.mongo.db
+          .collection("generalDonation")
+          .find({ disasterId, status: "arrived" })
+          .toArray(),
+        await fastify.mongo.db
+          .collection("campRequests")
+          .find({ disasterId, status: "arrived" })
+          .toArray(),
+        await fastify.mongo.db
+          .collection("inventory")
+          .find({ disasterId })
+          .toArray(),
+      ]);
+      const enrichItems = (data, itemType) => {
+        return data.map((itemGroup) => {
+          const updatedItems = itemGroup[itemType].map((item) => {
+            const itemDetails = items.find(
+              (i) => i._id.toString() === item.itemId.toString()
+            );
+            return {
+              ...item,
+              name: itemDetails?.name || "",
+              category: itemDetails?.category || "",
+              unit: itemDetails?.unit || "",
+              room: itemDetails?.room || "",
+            };
+          });
+          return { ...itemGroup, [itemType]: updatedItems };
+        });
+      };
+
+      const incommings = enrichItems(incomming, "donatedItems");
+      const outgoings = enrichItems(outgoing, "items");
+
+      reply.send({ incomingItems: incommings, outgoingItems: outgoings });
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  });
+
+  fastify.get("/getMyContributions", async (req, reply) => {
+    try {
+      const { disasterId } = req.query;
+      if (!disasterId) {
+        return reply.status(400).send({ message: "disasterId is required" });
+      }
+      const user = await authenticatedUser(fastify, req, reply);
+      if (!user) {
+        return reply.status(401).send({ message: "Unauthorized" });
+      }
+      const uid = user._id;
+      const assignPlace = user.roles.find(
+        (role) => disasterId == role.disasterId
+      )?.assignPlace;
+
+      if (!assignPlace) {
+        return reply
+          .status(400)
+          .send({ message: "You are not assigned to this disaster" });
+      }
+
+      const [incoming, outgoing] = await Promise.all([
+        await fastify.mongo.db
+          .collection("generalDonations")
+          .find({ disasterId, volunteerId: uid, status: "processed" })
+          .toArray(),
+        await fastify.mongo.db
+          .collection("campRequest")
+          .find({ disasterId, volunteerId: uid, status: "processed" })
+          .toArray(),
+      ]);
+
+      reply.send({ MyContributions: [...incoming, ...outgoing] });
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  });
+
+  fastify.post("/takeResponsibility", async (req, reply) => {
+    try {
+      const { disasterId, type } = req.body;
+      if (!disasterId || !type) {
+        return reply.status(400).send({ message: "all feilds is required" });
+      }
+      const user = await authenticatedUser(fastify, req, reply);
+
+      if (!user) {
+        return reply.status(401).send({ message: "Unauthorized" });
+      }
+      const assignPlace = user.roles.find(
+        (role) => disasterId == role.disasterId
+      )?.assignPlace;
+
+      if (!assignPlace) {
+        return reply
+          .status(400)
+          .send({ message: "You are not assigned to this disaster" });
+      }
+
+      const collection =
+        type === "incoming" ? "generalDonation" : "campRequests";
+
+      await fastify.mongo.db
+        .collection(collection)
+        .updateOne(
+          { disasterId, status: "arrived" },
+          { $set: { volunteerId: user._id } }
+        );
+
+      reply.send({ message: "Responsibility taken successfully" });
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  });
+
+  fastify.post("/dispatchDonation", async (req, reply) => {
+    try {
+      const { disasterId, processId, type } = req.body;
+      if (!disasterId || !processId || !type) {
+        return reply.status(400).send({ message: "all feilds is required" });
+      }
+      const user = await authenticatedUser(fastify, req, reply);
+
+      if (!user) {
+        return reply.status(401).send({ message: "Unauthorized" });
+      }
+      const assignPlace = user.roles.find(
+        (role) => disasterId == role.disasterId
+      )?.assignPlace;
+
+      if (!assignPlace) {
+        return reply
+          .status(400)
+          .send({ message: "You are not assigned to this disaster" });
+      }
+
+      const collection =
+        type === "incoming" ? "generalDonation" : "campRequests";
+
+      const process = await fastify.mongo.db
+        .collection(collection)
+        .findOne({ disasterId, _id: processId });
+      if (!process) {
+        return reply.status(404).send({ message: "Donation not found" });
+      }
+
+      await fastify.mongo.db
+        .collection(collection)
+        .updateOne(
+          { disasterId, _id: processId },
+          { $set: { status: "processed", processedAt: new Date() } }
+        );
+
+      const inventoryItems = process.donatedItems.map((item) => ({
+        itemId: item.itemId,
+        quantity: item.quantity,
+      }));
+
+      await fastify.mongo.db
+        .collection("inventory")
+        .updateMany(
+          {
+            disasterId,
+            _id: { $in: inventoryItems.map((item) => item.itemId) },
+          },
+          {
+            $inc: {
+              quantity: inventoryItems.find((i) => i.itemId === item._id)
+                .quantity,
+            },
+          }
+        );
+
+      try {
+        await mailSender.sendDonationDispatchMail(process.donarEmail, {
+          donationItems: process.donatedItems,
+          donarName: process.donarName,
+          donarEmail: process.donarEmail,
+          donarAddress: process.donarAddress,
+          status: "processed",
+          disasterId,
+          donarPhone: process.donarPhone || "",
+          deleverdAt: new Date(),
+        });
+      } catch (error) {
+        console.log("Error sending donation dispatch email:", error);
+      }
+
+      reply.send({ message: "Donation dispatched successfully" });
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  });
+
+  fastify
 
   done();
 };

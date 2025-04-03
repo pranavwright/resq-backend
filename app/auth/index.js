@@ -10,19 +10,8 @@ import {
 } from "../../middleware/authMiddleware.js";
 import { uploadProfileImage } from "../../utils/cloudStorage.js";
 import { customIdGenerator } from "../../utils/idGenerator.js";
-import admin from "firebase-admin";
-import path from "path";
-import { fileURLToPath } from "url";
-import { dirname } from "path";
 import { idCard } from "../../utils/pdfGenerator.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const serviceAccount = path.join(__dirname, "../../service-account.json");
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
 const authRoute = (fastify, options, done) => {
   const isAuthUser = {
     preHandler: [(req, reply) => authenticatedUser(fastify, req, reply)],
@@ -30,19 +19,13 @@ const authRoute = (fastify, options, done) => {
   const isRegisterAdmin = {
     preHandler: [
       (req, reply) =>
-        isUserAllowed(fastify, req, reply, [
-          "superAdmin",
-          "admin",
-          "stat",
-        ]),
+        isUserAllowed(fastify, req, reply, ["superAdmin", "admin", "stat"]),
     ],
   };
   const isCollectionPoint = {
     preHandler: [
       (req, reply) =>
-        isUserAllowed(fastify, req, reply, [
-          "collectionPointAdmin",
-        ]),
+        isUserAllowed(fastify, req, reply, ["collectionPointAdmin"]),
     ],
   };
   fastify.post("/register", isRegisterAdmin, async (req, reply) => {
@@ -291,7 +274,7 @@ const authRoute = (fastify, options, done) => {
   fastify.post("/verifyFirebaseToken", async (req, reply) => {
     try {
       const { firebaseToken, fcmToken } = req.body;
-      const decodedToken = await admin.auth().verifyIdToken(firebaseToken);
+      const decodedToken = await fastify.firebaseAuth.verifyIdToken(firebaseToken);
 
       if (!decodedToken.uid || !decodedToken.phone_number) {
         return reply.status(400).send({ message: "Invalid Firebase Token" });
@@ -472,6 +455,7 @@ const authRoute = (fastify, options, done) => {
         emailId: user[0].emailId,
         roles: user[0].roles,
         name: user[0].name,
+        uid: user[0]._id,
       });
     } catch (error) {
       console.error("Error in getUser:", error); // Log the error
@@ -700,6 +684,23 @@ const authRoute = (fastify, options, done) => {
         ) {
           return reply.status(400).send({ message: "User already exists" });
         } else if (
+          !checkVolenteer.roles
+            .find((role) => role.disasterId == disasterId)
+            .roles.includes("collectionpointvolunteer")
+        ) {
+          await fastify.mongo.db.collection("users").updateOne(
+            { phoneNumber, 'roles.disasterId': disasterId },
+            {
+              $push: {
+                "roles.$.roles": "collectionpointvolunteer",
+              },
+              $set: {
+                label: "volunteer",
+                "roles.$.assignPlace": assignPlace,
+              },
+            }
+          );
+        } else if (
           checkVolenteer.roles.some((role) => role.disasterId != disasterId)
         ) {
           await fastify.mongo.db.collection("users").updateOne(
@@ -734,6 +735,7 @@ const authRoute = (fastify, options, done) => {
           createdBy: uid,
         });
       }
+      reply.send({ message: "volunteer added successfully", success: true });
     } catch (error) {
       reply
         .status(500)

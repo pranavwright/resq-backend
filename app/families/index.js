@@ -200,6 +200,7 @@ const familyRoute = (fastify, options, done) => {
         light,
         uid,
         disasterId,
+        status,
       } = req.body;
       await fastify.mongo.db.collection("rooms").updateOne(
         { _id: roomId, disasterId },
@@ -218,13 +219,38 @@ const familyRoute = (fastify, options, done) => {
             fan,
             light,
             verifiedBy: uid,
+            verifiedAt: new Date(),
+            status: status || "verified",
           },
         }
       );
+      reply.status(200).send({ message: "Room verified" });
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
+
+  // fastify.post("verifyRoom", isRoomAdmins, async (req, reply) => {
+  //   try {
+  //     const { disasterId, roomId, status, verifications  } = req.body;
+  //     await fastify.mongo.db.collection("rooms").updateOne(
+  //       { _id: roomId, disasterId },
+  //       {
+  //         $set: {
+  //           status,
+  //           ...(verifications && { verifications }),
+  //           ...(status === "verified" && { verifiedAt: new Date() }),
+  //           ...(status === "verified" && { verifiedBy: req.user._id }),
+  //         },
+  //       }
+  //     );
+  //     reply.send({ message: "Room verified" });
+  //   } catch (error) {
+  //     reply.status(500).send({ message: "Internal Server Error" });
+  //   }
+  // }
+  // );
+
   fastify.get("/meAddedFamilies", isSurvey, async (req, reply) => {
     try {
       const { disasterId, uid } = req.query;
@@ -258,6 +284,83 @@ const familyRoute = (fastify, options, done) => {
         .aggregate([
           {
             $match: { disasterId },
+          },
+          {
+            $lookup: {
+              from: "members",
+              localField: "_id",
+              foreignField: "familyId",
+              as: "members",
+            },
+          },
+        ])
+        .toArray();
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  fastify.get("/getAllRooms", isRoomAdmins, async (req, reply) => {
+    try {
+      const { disasterId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("rooms")
+        .find({ disasterId, status: "pending" })
+        .toArray();
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  fastify.get("/getVerifiedRooms", isRoomAdmins, async (req, reply) => {
+    try {
+      const { disasterId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("rooms")
+        .find({ disasterId, status: "verified" })
+        .toArray();
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+  fastify.get("/getRoomDetails", isRoomAdmins, async (req, reply) => {
+    try {
+      const { disasterId, roomId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("rooms")
+        .find({ _id: roomId, disasterId })
+        .toArray();
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  fastify.get("/meVerifiedRooms", isRoomAdmins, async (req, reply) => {
+    try {
+      const { disasterId, uid } = req.query;
+      const list = await fastify.mongo.db
+        .collection("rooms")
+        .find({ disasterId, verifiedBy: uid })
+        .toArray();
+
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  fastify.get("/getFamilyDetails", isRoomAdmins, async (req, reply) => {
+    try {
+      const { disasterId, familyId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("family")
+        .aggregate([
+          {
+            $match: { _id: familyId, disasterId },
           },
           {
             $lookup: {

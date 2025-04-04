@@ -132,13 +132,14 @@ const familyRoute = (fastify, options, done) => {
     }
   });
 
-  fastify.post("/addRooms", isRoomAdmins, async (req, reply) => {
+  fastify.post("/addRooms", async (req, reply) => {
     try {
       const {
         location,
         _id,
         state,
         district,
+        address,
         houseNo,
         source,
         rentAmount,
@@ -158,6 +159,7 @@ const familyRoute = (fastify, options, done) => {
               ...(source && { source }),
               ...(rentAmount && { rentAmount }),
               ...(type && { type }),
+              ...(address && { address }),
               updatedBy: uid,
             },
           }
@@ -172,6 +174,7 @@ const familyRoute = (fastify, options, done) => {
           source,
           rentAmount,
           type,
+          address,
           createdBy: uid,
           disasterId,
         });
@@ -200,6 +203,7 @@ const familyRoute = (fastify, options, done) => {
         light,
         uid,
         disasterId,
+        address,
         status,
       } = req.body;
       await fastify.mongo.db.collection("rooms").updateOne(
@@ -218,6 +222,7 @@ const familyRoute = (fastify, options, done) => {
             chairCount,
             fan,
             light,
+            address,
             verifiedBy: uid,
             verifiedAt: new Date(),
             status: status || "verified",

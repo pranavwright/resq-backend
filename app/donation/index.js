@@ -741,7 +741,7 @@ const donationRoute = (fastify, options, done) => {
       const incommings = enrichItems(incomming, "donatedItems");
       const outgoings = enrichItems(outgoing, "items");
 
-      reply.send({ incomingItems: incommings, outgoingItems: outgoings });
+      reply.send({ incomingItems: incommings, outgoingItems: outgoings, userId: user._id });
     } catch (error) {
       reply.status(500).send({ message: error.message });
     }

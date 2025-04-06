@@ -150,7 +150,7 @@ const settingsRoute = (fastify, options, done) => {
     }
   });
 
-  fastify.get("/getResoureDistribution", isAdmin, async (req, reply) => {
+  fastify.get("/getResourceDistribution", isAdmin, async (req, reply) => {
     try {
       const { disasterId } = req.query;
       if (!disasterId) {
@@ -180,14 +180,14 @@ const settingsRoute = (fastify, options, done) => {
         const inComming = await fastify.mongo.db
           .collection("generalDonation")
           .count({
-            disasterId: disasterObjectId,
+            disasterId: disasterId,
             status: { $in: ["processed", "arrived"] },
             processedAt: { $gte: currentDate, $lt: nextDate },
           });
         const outGoning = await fastify.mongo.db
           .collection("campRequests")
           .count({
-            disasterId: disasterObjectId,
+            disasterId: disasterId,
             status: { $in: ["processed", "arrived"] },
             processedAt: { $gte: currentDate, $lt: nextDate },
           });
@@ -207,7 +207,7 @@ const settingsRoute = (fastify, options, done) => {
     }
   });
 
-  fastify.get("/getOfficersMetrix", isAdmin, async (req, reply) => {
+  fastify.get("/getOfficerMetrics", isAdmin, async (req, reply) => {
     try {
       const { disasterId } = req.query;
       if (!disasterId) {

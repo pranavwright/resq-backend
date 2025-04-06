@@ -274,7 +274,9 @@ const authRoute = (fastify, options, done) => {
   fastify.post("/verifyFirebaseToken", async (req, reply) => {
     try {
       const { firebaseToken, fcmToken } = req.body;
-      const decodedToken = await fastify.firebaseAuth.verifyIdToken(firebaseToken);
+      const decodedToken = await fastify.firebaseAuth.verifyIdToken(
+        firebaseToken
+      );
 
       if (!decodedToken.uid || !decodedToken.phone_number) {
         return reply.status(400).send({ message: "Invalid Firebase Token" });
@@ -689,13 +691,13 @@ const authRoute = (fastify, options, done) => {
             .roles.includes("collectionpointvolunteer")
         ) {
           await fastify.mongo.db.collection("users").updateOne(
-            { phoneNumber, 'roles.disasterId': disasterId },
+            { phoneNumber, "roles.disasterId": disasterId },
             {
               $push: {
                 "roles.$.roles": "collectionpointvolunteer",
               },
               $set: {
-                label: "volunteer",
+                ...(checkVolenteer.label && { label: "volunteer" }),
                 "roles.$.assignPlace": assignPlace,
               },
             }
@@ -714,7 +716,7 @@ const authRoute = (fastify, options, done) => {
                 },
               },
               $set: {
-                label: "volunteer",
+                ...(checkVolenteer.label && { label: "volunteer" }),
               },
             }
           );
@@ -731,7 +733,7 @@ const authRoute = (fastify, options, done) => {
               assignPlace,
             },
           ],
-          label: "volunteer",
+          ...(checkVolenteer.label && { label: "volunteer" }),
           createdBy: uid,
         });
       }

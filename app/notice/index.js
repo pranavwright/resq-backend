@@ -26,6 +26,9 @@ const noticeRoute = (fastify, options, done) => {
   fastify.get("/allNotice", isAdmin, async (req, reply) => {
     try {
       const { disasterId } = req.query;
+      if(!disasterId) {
+        return reply.status(400).send({ message: "disasterId required" });
+      }
       const list = await fastify.mongo.db
         .collection("notice")
         .find({ disasterId })

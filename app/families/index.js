@@ -75,6 +75,7 @@ const familyRoute = (fastify, options, done) => {
               disasterId,
               familyId: _id,
               createdBy: uid,
+              createdAt: new Date(),
               ...member,
             });
           }
@@ -112,6 +113,7 @@ const familyRoute = (fastify, options, done) => {
             disasterId,
             familyId: family.insertedId,
             createdBy: uid,
+            createdAt: new Date(),
             ...member,
           });
         }

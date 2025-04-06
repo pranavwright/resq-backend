@@ -105,8 +105,10 @@ const settingsRoute = (fastify, options, done) => {
       const endDate = new Date(disaster.endDate || Date.now());
 
       let disasterData = [];
+      let day = 0;
 
       while (startDate <= endDate) {
+        day++;
         const currentDate = new Date(startDate);
         const nextDate = new Date(startDate);
         nextDate.setDate(startDate.getDate() + 1);
@@ -136,6 +138,7 @@ const settingsRoute = (fastify, options, done) => {
 
         disasterData.push({
           date: dateString,
+          day: day,
           alive,
           died,
           missing,
@@ -169,8 +172,10 @@ const settingsRoute = (fastify, options, done) => {
       const endDate = new Date(disaster.endDate || Date.now());
 
       let resoure = [];
+      let day = 0;
 
       while (startDate <= endDate) {
+        day++;
         const currentDate = new Date(startDate);
         const nextDate = new Date(startDate);
         nextDate.setDate(startDate.getDate() + 1);
@@ -194,6 +199,7 @@ const settingsRoute = (fastify, options, done) => {
 
         resoure.push({
           date: dateString,
+          day: day,
           inComming,
           outGoning,
         });
@@ -219,7 +225,7 @@ const settingsRoute = (fastify, options, done) => {
         .aggregate([
           {
             $match: {
-              disasterId: disasterId,
+              "roles.disasterId": disasterId,
             },
           },
           {
@@ -231,7 +237,26 @@ const settingsRoute = (fastify, options, done) => {
         ])
         .toArray();
 
-      reply.send({ success: true, officers: countByLabel });
+      const affected = await fastify.mongo.db.collection("members").count({
+        disasterId,
+        status: { $in: ["alive", "hospital", "missing"] },
+      });
+
+      const reliefCamps = await fastify.mongo.db
+        .collection("camps")
+        .count({ disasterId, status: { $in: ["active", "inactive"] } });
+
+      const hospitalised = await fastify.mongo.db
+        .collection("members")
+        .count({ disasterId, status: "hospital" });
+
+      reply.send({
+        success: true,
+        officers: countByLabel,
+        affected,
+        reliefCamps,
+        hospitalised,
+      });
     } catch (error) {
       reply.status(500).send({ success: false, message: error.message });
     }
@@ -311,29 +336,75 @@ const settingsRoute = (fastify, options, done) => {
         .collection("users")
         .aggregate([
           {
-            $match:{
-              "roles.disasterId": disasterId, "roles.assignPlace": place 
-            }
+            $match: {
+              "roles.disasterId": disasterId,
+              "roles.assignPlace": place,
+            },
           },
           {
-            $lookup:{
-              from: 'campRequests',
-              localField: '_id',
-              foreignField: 'volunteerId',
-              as: 'outGoing'
-            }
+            $lookup: {
+              from: "campRequests",
+              localField: "_id",
+              foreignField: "volunteerId",
+              as: "outGoing",
+            },
           },
           {
-            $lookup:{
-              from: 'generalDonation',
-              localField: '_id',
-              foreignField: 'volunteerId',
-              as: 'inComming'
-            }
-          }
-        ]).toArray();
+            $lookup: {
+              from: "generalDonation",
+              localField: "_id",
+              foreignField: "volunteerId",
+              as: "inComming",
+            },
+          },
+        ])
+        .toArray();
 
-      reply.send({ success: true, settings: {...settings, volunteer} });
+      reply.send({ success: true, settings: { ...settings, volunteer } });
+    } catch (error) {
+      reply.status(500).send({ success: false, message: error.message });
+    }
+  });
+
+  fastify.get("/getAssetDonations", isAdmin, async (req, reply) => {
+    try {
+      const { disasterId } = req.query;
+      if (!disasterId) {
+        return reply.status(400).send({ message: "disasterId required" });
+      }
+      
+      const donations =  await fastify.mongo.db
+        .collection("assetDonations")
+        .aggregate([
+          {
+            $match: {
+              disasterId,
+            },
+          },
+          {
+            $lookup: {
+              from: "users",
+              localField: "donorId",
+              foreignField: "_id",
+              as: "donor",
+            },
+          },
+          {
+            $unwind: "$donor",
+            preserveNullAndEmptyArrays: true,
+          },
+          {
+            $project: {
+              _id: 0,
+              donorName: "$donor.name",
+              assetName: 1,
+              quantity: 1,
+              createdAt: 1,
+            },
+          },
+        ])
+        .toArray();
+      reply.send({ success: true, donations });
     } catch (error) {
       reply.status(500).send({ success: false, message: error.message });
     }

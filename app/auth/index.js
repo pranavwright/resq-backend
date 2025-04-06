@@ -745,6 +745,99 @@ const authRoute = (fastify, options, done) => {
     }
   });
 
+  fastify.post("/updateUser", isAuthUser, async (req, reply) => {
+    try {
+      const { uid, name, phoneNumber, disasterId } = req.body;
+
+
+      const user = await fastify.mongo.db
+        .collection("users")
+        .findOne({ _id: uid });
+
+      if (!user) {
+        return reply.status(404).send({ message: "User not found" });
+      }
+
+      await fastify.mongo.db.collection("users").updateOne(
+        { _id: uid },
+        {
+          $set: {
+            ...(name && { name }),
+            ...(phoneNumber && { phoneNumber }),
+          },
+        }
+      );
+
+      reply.send({ message: "User updated successfully" });
+    } catch (error) {
+      console.error("Error in updateUser:", error);
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  }
+  );
+  fastify.post(
+    "/uploadProfilePicture",
+    isAuthUser,
+    async (req, reply) => {
+      try {
+        const { uid, photo:file } = req.body;
+
+        if (!uid || !file) {
+          return reply.status(400).send({ message: "All fields are required" });
+        }
+
+        const user = await fastify.mongo.db
+          .collection("users")
+          .findOne({ _id: uid });
+
+        if (!user) {
+          return reply.status(404).send({ message: "User not found" });
+        }
+
+        // Extract file extension from base64 data
+        let fileExtension = "jpg"; // Default extension
+        let fileData = file;
+
+        if (typeof file === "string" && file.startsWith("data:image/")) {
+          const matches = file.match(/^data:image\/([a-zA-Z]+);base64,/);
+          if (matches && matches.length > 1) {
+            fileExtension = matches[1].toLowerCase();
+            fileData = file.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
+          }
+        }
+
+        // Generate unique filename with extension
+        const fileName = `${uid}.${fileExtension}`;
+
+        // Upload the image with proper filename
+        const { success, message, url } = await uploadProfileImage(
+          fileData,
+          fileName
+        );
+
+        if (success) {
+          await fastify.mongo.db.collection("users").updateOne(
+            { _id: uid },
+            {
+              $set: {
+                photoUrl: url,
+              },
+            }
+          );
+          reply.status(200).send({
+            message: "User profile image updated successfully",
+            photoUrl: url,
+          });
+        } else {
+          return reply.status(500).send({ message: "Failed to upload image" });
+        }
+      } catch (error) {
+        console.error("Error in updateUserProfileImage:", error);
+        reply.status(500).send({ message: "Internal Server Error" });
+      }
+    }
+  );
+
   done();
 };
 export default authRoute;

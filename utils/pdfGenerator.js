@@ -67,7 +67,7 @@ async function idCard(data, disaster) {
       phone: user.phoneNumber || "N/A",
       image_url:
         user.photoUrl ||
-        "https://storage.googleapis.com/resq_user_images/logo.jpg",
+        "https://storage.googleapis.com/resq_users_profile/logo.jpg",
       disaster: disaster.name,
       qr_data: JSON.stringify({
         name: user.name,

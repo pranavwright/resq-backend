@@ -26,6 +26,14 @@ const disasterRoute = (fastify, options, done) => {
     ],
   };
 
+  const slugify = (str) => {
+    return str
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "-")
+      .replace(/-{2,}/g, "-")
+      .replace(/^-+|-+$/g, "");
+  };
+
   fastify.get("/getDisasterData", async (req, reply) => {
     try {
       const { disasterId } = req.query;
@@ -137,6 +145,7 @@ const disasterRoute = (fastify, options, done) => {
       const {
         _id,
         name,
+        slug,
         description,
         location,
         startDate = new Date(),
@@ -156,6 +165,7 @@ const disasterRoute = (fastify, options, done) => {
             $set: {
               ...(status && { status }),
               ...(name && { name }),
+              ...(slug && { slug }),
               ...(description && { description }),
               ...(location && { location }),
               ...(severity && { severity }),
@@ -182,9 +192,11 @@ const disasterRoute = (fastify, options, done) => {
         ) {
           return reply.status(400).send({ message: "All fields are required" });
         }
+        slug = slugify(name);
         await fastify.mongo.db.collection("disasters").insertOne({
           _id: customIdGenerator("DIST"),
           name,
+          slug,
           description,
           location,
           startDate: new Date(startDate),

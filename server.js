@@ -52,6 +52,7 @@ fastify.register(AutoLoad, {
 
 fastify.register(fastifyCors, {
   origin: "*",
+  methods: ['POST','PUT','DELETE','GET','PATCH'],
 });
 
 fastify.register(fastifyJwt, {
@@ -64,7 +65,7 @@ fastify.register(fastifyJwt, {
 fastify.register(FastifyMongoDB, {
   forceClose: true,
   url: MONGODB_URL,
-  database: process.env.MONGODB_DATABASE || "test",
+  database: process.env.DB_MODE!="DEV"? process.env.MONGODB_DATABASE : "resQBackup",
 });
 
 fastify.addHook("onError", (request, reply, error, done) => {

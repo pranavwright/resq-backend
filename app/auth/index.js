@@ -306,6 +306,10 @@ const authRoute = (fastify, options, done) => {
         jwtToken,
         roles: user.roles,
         photoUrl: user.photoUrl,
+        uid: user._id,
+        name: user.name,
+        emailId: user.emailId,
+        userId:user._id,
       });
     } catch (error) {
       return reply
@@ -335,7 +339,7 @@ const authRoute = (fastify, options, done) => {
 
   fastify.put("/updateUser", isAuthUser, async (req, reply) => {
     try {
-      const { email: emailId, uid, photoUrl: file, name } = req.body;
+      const { email: emailId, uid, photoUrl, name } = req.body;
 
       const user = await fastify.mongo.db
         .collection("users")
@@ -344,66 +348,37 @@ const authRoute = (fastify, options, done) => {
         return reply.status(400).send({ message: "User not found" });
       }
 
-      if (file) {
-        // Extract file extension from base64 data
-        let fileExtension = "jpg"; // Default extension
-        let fileData = file;
-
-        if (typeof file === "string" && file.startsWith("data:image/")) {
-          const matches = file.match(/^data:image\/([a-zA-Z]+);base64,/);
-          if (matches && matches.length > 1) {
-            fileExtension = matches[1].toLowerCase();
-            fileData = file.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
-          }
-        }
-
-        // Generate unique filename with extension
-        const fileName = `${uid}.${fileExtension}`;
-
-        // Upload the image with proper filename
-        const { success, message, url } = await uploadProfileImage(
-          fileData,
-          fileName
-        );
-
-        if (success) {
-          await fastify.mongo.db.collection("users").updateOne(
-            { _id: uid },
-            {
-              $set: {
-                photoUrl: url,
-                ...(emailId && { emailId }),
-                ...(name & { name }),
-              },
-            }
-          );
-          reply
-            .status(200)
-            .send({ message: "User updated successfully", photoUrl: url });
-        } else {
-          return reply.status(500).send({ message: "Failed to upload image" });
-        }
-      } else {
-        await fastify.mongo.db
+      await fastify.mongo.db
           .collection("users")
           .updateOne(
             { _id: uid },
-            { $set: { ...(emailId && { emailId }), ...(name & { name }) } }
+            { $set: { ...(emailId && { emailId }), ...(name & { name }),...(photoUrl && { photoUrl }), } }
           );
         reply
           .status(200)
-          .send({ message: "User updated successfully", photoUrl: url });
-      }
+          .send({ message: "User updated successfully", photoUrl });
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
 
+  fastify.get('/authing',isAuthUser,async(req,reply)=>{
+    try {
+      const { uid } = req.query;
+      const user = await fastify.mongo.db.collection("users").findOne({_id:uid}) 
+      if(!user){
+        return reply.status(400).send({ message: "User not found" });
+      }
+      reply.status(200).send({ message: "User found", user });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  })
   //to check user
   fastify.get("/getUser", isAuthUser, async (req, reply) => {
     try {
       const { uid } = req.query;
-      const user = await fastify.mongo.db
+      const [user] = await fastify.mongo.db
         .collection("users")
         .aggregate([
           {
@@ -447,17 +422,33 @@ const authRoute = (fastify, options, done) => {
         ])
         .toArray();
 
-      if (!user || user.length === 0) {
+      if (!user) {
         reply.status(400).send({ message: "User not found" });
         return;
       }
 
+      let getAssignedPlaces = user.roles.filter(x=>x.assignPlace).map(x=>x.assignPlace)
+      getAssignedPlaces=new Set(getAssignedPlaces)
+      let collectionPoints = await fastify.mongo.db.collection("collectionPoints").find({ _id: { $in: Array.from(getAssignedPlaces) } }).toArray()
+      let camps = await fastify.mongo.db.collection("camps").find({ _id: { $in: Array.from(getAssignedPlaces) } }).toArray()
+
+      user.roles = user.roles.map(x=>{
+        if(x.assignPlace){
+          if(collectionPoints.find(y=>y._id==x.assignPlace)){
+            x.assignPlace = collectionPoints.find(y=>y._id==x.assignPlace).name
+          }else if(camps.find(y=>y._id==x.assignPlace)){
+            x.assignPlace = camps.find(y=>y._id==x.assignPlace).name
+          }
+        }
+        return x
+      })
+
       reply.status(200).send({
-        photoUrl: user[0].photoUrl,
-        emailId: user[0].emailId,
-        roles: user[0].roles,
-        name: user[0].name,
-        uid: user[0]._id,
+        photoUrl: user.photoUrl,
+        emailId: user.emailId,
+        roles: user.roles,
+        name: user.name,
+        uid: user._id,
       });
     } catch (error) {
       console.error("Error in getUser:", error); // Log the error

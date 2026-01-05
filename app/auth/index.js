@@ -507,50 +507,73 @@ const authRoute = (fastify, options, done) => {
             },
           },
           {
-            $lookup: {
-              from: "collectionPoints",
-              localField: "roles.assignPlace",
-              foreignField: "_id",
-              as: "collectionPoint",
-            },
+            $match: {
+              "roles.disasterId": { $in: [disasterId, null] }
+            }
           },
+          {
+            $lookup: {
+              from: "disasters",
+              localField: "roles.disasterId",
+              foreignField: "_id",
+              as: "disasterInfo"
+            }
+          },
+          { $unwind: { path: "$disasterInfo", preserveNullAndEmptyArrays: true } },
           {
             $lookup: {
               from: "camps",
               localField: "roles.assignPlace",
               foreignField: "_id",
-              as: "camp",
-            },
+              as: "campInfo"
+            }
           },
           {
-            $unwind: {
-              path: "$camp",
-              preserveNullAndEmptyArrays: true,
-            },
+            $lookup: {
+              from: "collectionPoints",
+              localField: "roles.assignPlace",
+              foreignField: "_id",
+              as: "cpInfo"
+            }
           },
+
           {
-            $unwind: {
-              path: "$collectionPoint",
-              preserveNullAndEmptyArrays: true,
-            },
+            $addFields: {
+              "roles.disasterName": "$disasterInfo.name",
+              "roles.resolvedPlaceName": {
+                $let: {
+                  vars: {
+                    camp: { $arrayElemAt: ["$campInfo", 0] },
+                    cp: { $arrayElemAt: ["$cpInfo", 0] }
+                  },
+                  in: {
+                    $ifNull: ["$$camp.name", { $ifNull: ["$$cp.name", "$roles.assignPlace"] }]
+                  }
+                }
+              }
+            }
           },
+
+          {
+            $group: {
+              _id: "$_id",
+              name: { $first: "$name" },
+              photoUrl: { $first: "$photoUrl" },
+              emailId: { $first: "$emailId" },
+              roles: {
+                $push: {
+                  disasterId: "$roles.disasterId",
+                  roles: "$roles.roles",
+                  assignPlace: "$roles.resolvedPlaceName", // Use the name we found
+                  disasterName: "$roles.disasterName",
+                }
+              }
+            }
+          }
         ])
         .toArray();
 
-      users.forEach((user) => {
-        if (user.roles && user.roles.disasterId == disasterId) {
-          user.assignedRoles = user.roles.roles;
-          user.assignPlace = user.camp || user.collectionPoint;
-        }
-      });
-
-      const user = users.filter((user) => {
-        if (user.roles && user.roles.disasterId == disasterId) {
-          return user;
-        }
-      });
-
-      reply.send(user);
+      reply.send(users);
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }
@@ -881,7 +904,7 @@ const authRoute = (fastify, options, done) => {
       if (!uid || !disasterId) {
         return reply.status(400).send({ message: "All fields are required" });
       }
-      const user = await fastify.mongo.db.collection("users").find({ _id: uid, 'roles.disasterId': disasterId })
+      const user = await fastify.mongo.db.collection("users").findOne({ _id: uid, 'roles.disasterId': disasterId })
       if (!user) {
         return reply.status(404).send({ message: "User not found" });
       }

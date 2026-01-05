@@ -28,10 +28,10 @@ try {
   });
   const auth = getAuth(firebaseApp);
 
-  
+
   // Set the credentials path for Google Cloud libraries
   process.env.GOOGLE_APPLICATION_CREDENTIALS = path.join(__dirname, "/service-account.json");
-  
+
   fastify.decorate('firebase', firebaseApp);
   fastify.decorate('firebaseAuth', auth);
   console.log('Firebase app initialized successfully.');
@@ -52,7 +52,7 @@ fastify.register(AutoLoad, {
 
 fastify.register(fastifyCors, {
   origin: "*",
-  methods: ['POST','PUT','DELETE','GET','PATCH'],
+  methods: ['POST', 'PUT', 'DELETE', 'GET', 'PATCH'],
 });
 
 fastify.register(fastifyJwt, {
@@ -65,7 +65,7 @@ fastify.register(fastifyJwt, {
 fastify.register(FastifyMongoDB, {
   forceClose: true,
   url: MONGODB_URL,
-  database: process.env.DB_MODE!="DEV"? process.env.MONGODB_DATABASE : "resQBackup",
+  database: process.env.DB_MODE != "DEV" ? process.env.MONGODB_DATABASE : "resQBackup",
 });
 
 fastify.addHook("onError", (request, reply, error, done) => {
@@ -82,46 +82,49 @@ fastify.addHook("onSend", async (request, reply, payload) => {
   logApi(request, reply);
 });
 
+const ENV = process.env.NODE_ENV || "development";
+
 async function logApi(request, reply) {
-  if (request.startTime) {
-    const ENV = process.env.NODE_ENV || "development";
-    const [seconds, nanoseconds] = process.hrtime(request.startTime);
-    const responseTimeMs = (seconds * 1000 + nanoseconds / 1e6).toFixed(2);
+  if (!request.startTime) return;
 
-    const { url, headers } = request;
-    const urlPath = new URL(url, `http://${headers.host}`).pathname;
+  const [seconds, nanoseconds] = process.hrtime(request.startTime);
+  const responseTimeMs = (seconds * 1000 + nanoseconds / 1e6);
 
-    const isSuccess = reply.statusCode >= 200 && reply.statusCode < 300;
-    const status = isSuccess ? "pass" : "fail";
+  // request.routeOptions.url gives the pattern (e.g., /users/:id) which is usually better for metrics than /users/123
+  const endpointName = request.routeOptions?.url || request.routerPath || request.url;
 
-    const apiMetric = {
+  const isSuccess = reply.statusCode >= 200 && reply.statusCode < 300;
+  const status = isSuccess ? "pass" : "fail";
+
+  // 3. Construct the filter and update operations
+  const filter = {
+    endpointName,
+    statusCode: reply.statusCode,
+    env: ENV
+  };
+
+  const updateDoc = {
+    $inc: { count: 1 },
+    $push: { timeRequired: parseFloat(responseTimeMs.toFixed(2)) },
+    $set: { calledAt: new Date() },
+    $setOnInsert: {
       _id: customIdGenerator("API"),
       method: request.method,
-      endpointName: urlPath,
-      timeRequired: [parseFloat(responseTimeMs)],
-      statusCode: reply?.statusCode,
-      calledAt: new Date(),
-      status,
-      env: ENV,
       uid: request?.uid,
-      count: 1,
-    };
-
-    try {
-      const api = await fastify.mongo.db.collection("apiMetrics").updateOne(
-        { endpointName: urlPath, statusCode: reply.statusCode, env: ENV },
-        {
-          $inc: { count: 1 },
-          $push: { timeRequired: parseFloat(responseTimeMs) },
-        }
-      );
-      if (api.modifiedCount === 0) {
-        fastify.mongo.db.collection("apiMetrics").insertOne(apiMetric);
-      }
-    } catch (error) {
-      console.error("Error in logging API metrics", error);
+      firstCalledAt: new Date(),
+      status
     }
-    console.log(JSON.stringify(apiMetric, null, 2));
+  };
+
+  // 4. Fire and forget (No await). 
+  // This prevents DB latency from slowing down the user response.
+  fastify.mongo.db.collection("apiMetrics")
+    .updateOne(filter, updateDoc, { upsert: true })
+    .catch(err => console.error("Error logging API metric:", err));
+
+  // Optional: Only log to console in dev to save CPU in prod
+  if (ENV === 'development') {
+    console.log(`[API Log] ${request.method} ${endpointName} - ${reply.statusCode} (${responseTimeMs.toFixed(2)}ms)`);
   }
 }
 

@@ -26,8 +26,8 @@ export const authenticatedUser = async (fastify, req, reply) => {
             returnParam = req.query;
         }
 
-        returnParam.uid = user._id;
-        returnParam.disasterId = disasterId;
+        returnParam.uid = returnParam.uid || user._id;
+        returnParam.disasterId = returnParam.disasterId || disasterId;
         req.uid = user._id;
         req.disasterId = disasterId;
 

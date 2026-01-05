@@ -36,19 +36,19 @@ const disasterRoute = (fastify, options, done) => {
 
   fastify.get("/getDisasterData", async (req, reply) => {
     try {
-      const { disasterId } = req.query;
+      const { disasterId, slug } = req.query;
 
-      if (!disasterId) {
-        return reply.status(400).send({ message: "Disaster ID is required" });
+      if (!disasterId && !slug) {
+        return reply.status(400).send({ message: "Disaster ID or slug is required" });
       }
+
+      const matchQuery = disasterId ? { _id: disasterId } : { slug: slug };
 
       const disasterData = await fastify.mongo.db
         .collection("disasters")
         .aggregate([
           {
-            $match: {
-              _id: disasterId,
-            },
+            $match: matchQuery,
           },
           {
             $lookup: {

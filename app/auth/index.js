@@ -868,8 +868,8 @@ const authRoute = (fastify, options, done) => {
       }
       let disasterIds = user.roles.map(x => x.disasterId)
       disasterIds = new Set(disasterIds)
-      const disasters = await fastify.mongo.db.collection("disasters").find({ _id: { $in: Array.from(disasterIds) } }).projection({ slug: 1, _id: 1, name: 1, discription: 1, status: 1 }).toArray();
-      reply.send({ disasters })
+      const disasters = await fastify.mongo.db.collection("disasters").find({ _id: { $in: Array.from(disasterIds) } }, { projection: { slug: 1, _id: 1, name: 1, discription: 1, status: 1 } }).toArray();
+      reply.status(200).send({ message: "Disasters found", disasters })
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }

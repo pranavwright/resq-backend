@@ -192,11 +192,10 @@ const disasterRoute = (fastify, options, done) => {
         ) {
           return reply.status(400).send({ message: "All fields are required" });
         }
-        slug = slugify(name);
         await fastify.mongo.db.collection("disasters").insertOne({
           _id: customIdGenerator("DIST"),
           name,
-          slug,
+          slug: slug || slugify(name),
           description,
           location,
           startDate: new Date(startDate),
@@ -303,7 +302,7 @@ const disasterRoute = (fastify, options, done) => {
         .collection("camps")
         .find({ disasterId }, { projection: { _id: 1, name: 1 } })
         .toArray();
-      reply.send({list});
+      reply.send({ list });
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }

@@ -296,20 +296,22 @@ const authRoute = (fastify, options, done) => {
           { phoneNumber: `${numberOnly}` },
           { $set: { fcmToken: fcmToken } }
         );
-
+      const disasterId = user.roles?.find(x => x.disasterId)?.disasterId;
       const jwtToken = fastify.jwt.sign({
         phoneNumber: decodedToken.phone_number,
         _id: user._id,
+        disasterId: disasterId,
       });
 
       return reply.status(200).send({
         jwtToken,
-        roles: user.roles,
+        roles: [...user.roles.filter(x => x.disasterId == disasterId), ...user.roles.filter(x => !x.disasterId)],
         photoUrl: user.photoUrl,
         uid: user._id,
         name: user.name,
         emailId: user.emailId,
-        userId:user._id,
+        userId: user._id,
+        disasterId: disasterId,
       });
     } catch (error) {
       return reply
@@ -349,26 +351,27 @@ const authRoute = (fastify, options, done) => {
       }
 
       await fastify.mongo.db
-          .collection("users")
-          .updateOne(
-            { _id: uid },
-            { $set: { ...(emailId && { emailId }), ...(name & { name }),...(photoUrl && { photoUrl }), } }
-          );
-        reply
-          .status(200)
-          .send({ message: "User updated successfully", photoUrl });
+        .collection("users")
+        .updateOne(
+          { _id: uid },
+          { $set: { ...(emailId && { emailId }), ...(name & { name }), ...(photoUrl && { photoUrl }), } }
+        );
+      reply
+        .status(200)
+        .send({ message: "User updated successfully", photoUrl });
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
 
-  fastify.get('/authing',isAuthUser,async(req,reply)=>{
+  fastify.get('/authing', isAuthUser, async (req, reply) => {
     try {
-      const { uid } = req.query;
-      const user = await fastify.mongo.db.collection("users").findOne({_id:uid}) 
-      if(!user){
+      const { uid, disasterId } = req.query;
+      let user = await fastify.mongo.db.collection("users").findOne({ _id: uid })
+      if (!user) {
         return reply.status(400).send({ message: "User not found" });
       }
+      user = { ...user, roles: [...user.roles.filter(x => x.disasterId == disasterId), ...user.roles.filter(x => !x.disasterId)] }
       reply.status(200).send({ message: "User found", user });
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
@@ -377,81 +380,108 @@ const authRoute = (fastify, options, done) => {
   //to check user
   fastify.get("/getUser", isAuthUser, async (req, reply) => {
     try {
-      const { uid } = req.query;
-      const [user] = await fastify.mongo.db
-        .collection("users")
-        .aggregate([
-          {
-            $match: {
-              _id: uid,
-            },
-          },
-          {
-            $unwind: "$roles",
-          },
-          {
-            $lookup: {
-              from: "disasters",
-              localField: "roles.disasterId",
-              foreignField: "_id",
-              as: "disaster",
-            },
-          },
-          {
-            $unwind: {
-              path: "$disaster",
-              preserveNullAndEmptyArrays: true,
-            },
-          },
-          {
-            $group: {
-              _id: "$_id",
-              name: { $first: "$name" },
-              photoUrl: { $first: "$photoUrl" },
-              emailId: { $first: "$emailId" },
-              roles: {
-                $push: {
-                  disasterId: "$roles.disasterId",
-                  roles: "$roles.roles",
-                  assignPlace: "$roles.assignPlace",
-                  disasterName: "$disaster.name",
+      const { uid, disasterId } = req.query;
+
+      // Run everything in one powerful database query
+      const [user] = await fastify.mongo.db.collection("users").aggregate([
+        // 1. Find the user
+        { $match: { _id: uid } },
+
+        // 2. Break down the roles array to process each role individually
+        { $unwind: "$roles" },
+
+        {
+          $match: {
+            "roles.disasterId": { $in: [disasterId, null] }
+          }
+        },
+        // 3. Join with Disasters collection
+        {
+          $lookup: {
+            from: "disasters",
+            localField: "roles.disasterId",
+            foreignField: "_id",
+            as: "disasterInfo"
+          }
+        },
+        // Flatten the disaster array (preserve role even if disaster is missing)
+        { $unwind: { path: "$disasterInfo", preserveNullAndEmptyArrays: true } },
+
+        // 4. Join with Camps (Attempt to find assignPlace in Camps)
+        {
+          $lookup: {
+            from: "camps",
+            localField: "roles.assignPlace",
+            foreignField: "_id",
+            as: "campInfo"
+          }
+        },
+
+        // 5. Join with CollectionPoints (Attempt to find assignPlace in CollectionPoints)
+        {
+          $lookup: {
+            from: "collectionPoints",
+            localField: "roles.assignPlace",
+            foreignField: "_id",
+            as: "cpInfo"
+          }
+        },
+
+        // 6. Logic: Determine the place name. 
+        // If campInfo has data, use it. Otherwise, try cpInfo.
+        {
+          $addFields: {
+            "roles.disasterName": "$disasterInfo.name",
+            "roles.resolvedPlaceName": {
+              $let: {
+                vars: {
+                  camp: { $arrayElemAt: ["$campInfo", 0] },
+                  cp: { $arrayElemAt: ["$cpInfo", 0] }
                 },
-              },
-            },
-          },
-        ])
-        .toArray();
+                in: {
+                  // If assignPlace is null, this stays null. 
+                  // Otherwise checks Camp Name -> Collection Point Name -> keep original ID as fallback
+                  $ifNull: ["$$camp.name", { $ifNull: ["$$cp.name", "$roles.assignPlace"] }]
+                }
+              }
+            }
+          }
+        },
 
-      if (!user) {
-        reply.status(400).send({ message: "User not found" });
-        return;
-      }
-
-      let getAssignedPlaces = user.roles.filter(x=>x.assignPlace).map(x=>x.assignPlace)
-      getAssignedPlaces=new Set(getAssignedPlaces)
-      let collectionPoints = await fastify.mongo.db.collection("collectionPoints").find({ _id: { $in: Array.from(getAssignedPlaces) } }).toArray()
-      let camps = await fastify.mongo.db.collection("camps").find({ _id: { $in: Array.from(getAssignedPlaces) } }).toArray()
-
-      user.roles = user.roles.map(x=>{
-        if(x.assignPlace){
-          if(collectionPoints.find(y=>y._id==x.assignPlace)){
-            x.assignPlace = collectionPoints.find(y=>y._id==x.assignPlace).name
-          }else if(camps.find(y=>y._id==x.assignPlace)){
-            x.assignPlace = camps.find(y=>y._id==x.assignPlace).name
+        // 7. Re-group back into a single User object
+        {
+          $group: {
+            _id: "$_id",
+            name: { $first: "$name" },
+            photoUrl: { $first: "$photoUrl" },
+            emailId: { $first: "$emailId" },
+            roles: {
+              $push: {
+                disasterId: "$roles.disasterId",
+                roles: "$roles.roles",
+                assignPlace: "$roles.resolvedPlaceName", // Use the name we found
+                disasterName: "$roles.disasterName",
+              }
+            }
           }
         }
-        return x
-      })
+      ]).toArray();
 
-      reply.status(200).send({
-        photoUrl: user.photoUrl,
-        emailId: user.emailId,
-        roles: user.roles,
-        name: user.name,
+      if (!user) {
+        return reply.status(404).send({ message: "User not found" });
+      }
+
+      // Direct response - no manual mapping needed!
+      reply.send({
         uid: user._id,
+        name: user.name,
+        emailId: user.emailId,
+        photoUrl: user.photoUrl,
+        roles: user.roles
       });
+
     } catch (error) {
-      console.error("Error in getUser:", error); // Log the error
+      req.log.error(error); // Use Fastify logger if available
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
@@ -771,7 +801,7 @@ const authRoute = (fastify, options, done) => {
     isAuthUser,
     async (req, reply) => {
       try {
-        const { uid, photo:file } = req.body;
+        const { uid, photo: file } = req.body;
 
         if (!uid || !file) {
           return reply.status(400).send({ message: "All fields are required" });
@@ -828,6 +858,54 @@ const authRoute = (fastify, options, done) => {
       }
     }
   );
+
+
+  fastify.get('/getAssignedDisasters', isAuthUser, async (req, reply) => {
+    try {
+      const user = await fastify.mongo.db.collection("users").findOne({ _id: req.uid });
+      if (!user) {
+        return reply.status(404).send({ message: "User not found" });
+      }
+      let disasterIds = user.roles.map(x => x.disasterId)
+      disasterIds = new Set(disasterIds)
+      const disasters = await fastify.mongo.db.collection("disasters").find({ _id: { $in: Array.from(disasterIds) } }).projection({ slug: 1, _id: 1, name: 1, discription: 1, status: 1 }).toArray();
+      reply.send({ disasters })
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  })
+
+  fastify.post('/changeCurrentDisaster', isAuthUser, async (req, reply) => {
+    try {
+      const { uid, disasterId } = req.body;
+      if (!uid || !disasterId) {
+        return reply.status(400).send({ message: "All fields are required" });
+      }
+      const user = await fastify.mongo.db.collection("users").find({ _id: uid, 'roles.disasterId': disasterId })
+      if (!user) {
+        return reply.status(404).send({ message: "User not found" });
+      }
+      const jwtToken = fastify.jwt.sign({
+        phoneNumber: user.phoneNumber,
+        _id: user._id,
+        disasterId: disasterId,
+      });
+
+      return reply.status(200).send({
+        jwtToken,
+        roles: [...user.roles.filter(x => x.disasterId == disasterId), ...user.roles.filter(x => !x.disasterId)],
+        photoUrl: user.photoUrl,
+        uid: user._id,
+        name: user.name,
+        emailId: user.emailId,
+        userId: user._id,
+        disasterId: disasterId,
+        message: "Current disaster changed successfully"
+      });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  })
 
   done();
 };

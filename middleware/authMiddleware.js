@@ -14,9 +14,9 @@ export const authenticatedUser = async (fastify, req, reply) => {
             throw new Error('Invalid token');
         }
 
-        const { phoneNumber, _id } = decodedToken;
+        const { phoneNumber, _id, disasterId } = decodedToken;
         const user = await fastify.mongo.db.collection('users').findOne({ _id });
-        
+
         if (!user) {
             throw new Error('User not found');
         }
@@ -27,6 +27,9 @@ export const authenticatedUser = async (fastify, req, reply) => {
         }
 
         returnParam.uid = user._id;
+        returnParam.disasterId = disasterId;
+        req.uid = user._id;
+        req.disasterId = disasterId;
 
         return user;
     } catch (error) {
@@ -42,8 +45,8 @@ export const isUserAllowed = async (fastify, req, reply, allowedRoles) => {
             throw new Error('User not found');
         }
 
-        const hasAllowedRole = user.roles.some(x=> x.roles.some(role => allowedRoles.includes(role)));
-        
+        const hasAllowedRole = user.roles.some(x => x.roles.some(role => allowedRoles.includes(role)));
+
         if (!hasAllowedRole) {
             console.log(`Access denied: User roles [${user.roles}] not in allowed roles [${allowedRoles}]`);
             throw new Error('User not allowed');

@@ -47,6 +47,9 @@ const authRoute = (fastify, options, done) => {
       if (!Array.isArray(role)) {
         role = [role];
       }
+      if (phoneNumber.length !== 10 || isNaN(phoneNumber)) {
+        return reply.status(400).send({ message: "Invalid phone number" });
+      }
 
       const isAdmin = await fastify.mongo.db.collection("users").findOne({
         phoneNumber,
@@ -560,6 +563,7 @@ const authRoute = (fastify, options, done) => {
               name: { $first: "$name" },
               photoUrl: { $first: "$photoUrl" },
               emailId: { $first: "$emailId" },
+              phoneNumber: { $first: "$phoneNumber" },
               roles: {
                 $push: {
                   disasterId: "$roles.disasterId",

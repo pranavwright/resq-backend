@@ -24,46 +24,36 @@ const aiRoute = (fastify, options, done) => {
         }
 
         const systemPrompt = `
-          You are an AI that converts natural language queries into MongoDB aggregation pipelines or structured filters.
-          User Prompt: "${prompt}"
+          You are an AI that converts natural language queries into MongoDB aggregation pipelines and selects columns to display.
           
-          The data structure involves 'family' collection and 'members' collection.
-          'family' has fields like: ward, village, rationCardNo, contactNo, etc.
-          'members' has fields like: name, dob (date), gender, education, etc.
+          User Query: "${prompt}"
+          Schema Context: ${JSON.stringify(schema || {})}
           
-          Generate a structured JSON object representing the filter criteria.
-          Format:
-          {
-            "familyFilters": { "field": "value", ... },
-            "memberFilters": { "field": "value", ... }
-          }
-          For age, calculate based on current year or return a range logic if capable.
-          Example: "Children under 18" -> memberFilters: { "age": { "$lt": 18 } } (Backend will handle 'age' to 'dob' conversion if needed, or you return simplified criteria).
-          
-          Actually, let's keep it simple. Return a JSON with:
-          - "description": "Short explanation of what is filtered"
-          - "mongoQuery": A MongoDB query object that matches the requirements.
-             Assume we are filtering the 'family' collection, which has 'members' looked up.
-             Fields in family are direct (e.g., 'ward').
-             Fields in members are in 'members' array (e.g., 'members.age' or 'members.gender').
+          Goal:
+          1. Generate a MongoDB aggregation pipeline for the 'family' collection.
+          2. Suggest columns to display based on the query.
 
-          BUT since we need to show specific columns too ("show name, contact number only"), extract "columns" to show.
+          Data Structure:
+          - 'family' collection (root): ward, village, rationCardNo, contactNo, houseHead, etc.
+          - 'members' collection (looked up as 'members' array): name, dob (date), gender, education, etc.
           
-          Output JSON ONLY.
+          Output JSON ONLY with this format:
           {
-            "mongoQuery": { ... },
-            "columns": ["field1", "field2"]
+            "mongoQuery": { ... }, // The filter object for $match or a full pipeline if needed (usually just match criteria).
+            "columns": ["field1", "field2"] // Columns to show.
           }
+          
+          Rules:
+          - Return PURE JSON. No markdown formatting (no \`\`\`json).
+          - For dates/ages, use appropriate comparisons ($lt, $gt) relative to now.
+          - If fields are specific to members, ensure you filter correctly (e.g., 'members.age').
         `;
 
-        // A simpler approach for the specific user request:
-        // "list childres age under 18 and they are stuyding not baby i need the name contact number only"
-
         const generationConfig = {
-          temperature: 0.2,
+          temperature: 0.1, // Lower temperature for more deterministic JSON
           topK: 32,
           topP: 1,
-          maxOutputTokens: 1024,
+          maxOutputTokens: 2048, // Increased limits
           responseMimeType: "application/json",
         };
 
@@ -73,7 +63,13 @@ const aiRoute = (fastify, options, done) => {
         });
 
         const response = result.response;
-        const text = response.text();
+        let text = response.text();
+
+        // Cleanup markdown/text
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        console.log("AI Output:", text); // Debug log
+
         const jsonResponse = JSON.parse(text);
 
         reply.send(jsonResponse);

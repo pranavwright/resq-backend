@@ -9,6 +9,11 @@ import {
   isUserAllowed,
 } from "../../middleware/authMiddleware.js";
 import { customIdGenerator } from "../../utils/idGenerator.js";
+import {
+  neededAssessmentFamQues,
+  neededAssessmentMemQues,
+  defaultNeededAssessmentQues,
+} from "../../configs/needAssessment.js";
 
 const familyRoute = (fastify, options, done) => {
   const isAuthUser = {
@@ -308,6 +313,34 @@ const familyRoute = (fastify, options, done) => {
     }
   });
 
+  fastify.post("/search", isStat, async (req, reply) => {
+    try {
+      const { disasterId, query } = req.body;
+      const list = await fastify.mongo.db
+        .collection("family")
+        .aggregate([
+          {
+            $match: { disasterId },
+          },
+          {
+            $lookup: {
+              from: "members",
+              localField: "_id",
+              foreignField: "familyId",
+              as: "members",
+            },
+          },
+          {
+            $match: query || {},
+          },
+        ])
+        .toArray();
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
   fastify.get("/getAllRooms", isRoomAdmins, async (req, reply) => {
     try {
       const { disasterId } = req.query;
@@ -380,6 +413,32 @@ const familyRoute = (fastify, options, done) => {
         ])
         .toArray();
       reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  fastify.get("/camps", isSurvey, async (req, reply) => {
+    try {
+      const { disasterId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("camps")
+        .find({ disasterId })
+        .project({ _id: 1, location: 1, name: 1, address: 1 }) // sending minimal data
+        .toArray();
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  fastify.get("/questions", async (req, reply) => {
+    try {
+      reply.send({
+        familyQuestions: neededAssessmentFamQues,
+        memberQuestions: neededAssessmentMemQues,
+        sections: defaultNeededAssessmentQues,
+      });
     } catch (error) {
       reply.status(500).send({ message: "Internal Server Error" });
     }

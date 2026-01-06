@@ -228,6 +228,59 @@ const disasterRoute = (fastify, options, done) => {
     }
   });
 
+  // Helper to sync admin roles
+  const syncAdminRole = async (disasterId, placeId, oldAdminId, newAdminId, roleName) => {
+    // 1. Remove role from old admin
+    if (oldAdminId && oldAdminId !== newAdminId) {
+      await fastify.mongo.db.collection("users").updateOne(
+        { _id: oldAdminId, "roles.disasterId": disasterId },
+        {
+          $pull: { "roles.$.roles": roleName },
+          // Don't nullify assignPlace if they have other roles there? 
+          // For simplicity, if they lose the admin role for this place, we assume they are no longer assigned there,
+          // unless we want to keep them as a volunteer. 
+          // Let's safe-guard: if they have no other roles for this place, remove assignPlace.
+          // Actually, simplest is just unset assignPlace if it matches.
+        }
+      );
+      // We might want to remove assignPlace cleanly but pulling from array is complex if structure varies.
+      // Let's assume standard behavior: remove role. if roles array becomes empty or no longer has place-relevant roles, handle it.
+      // For this MVP, we just pull the role.
+    }
+
+    // 2. Add role to new admin
+    if (newAdminId) {
+      // Check if user has disaster role
+      const user = await fastify.mongo.db.collection("users").findOne({ _id: newAdminId });
+      if (user) {
+        const hasDisasterRole = user.roles?.find(r => r.disasterId === disasterId);
+        if (hasDisasterRole) {
+          await fastify.mongo.db.collection("users").updateOne(
+            { _id: newAdminId, "roles.disasterId": disasterId },
+            {
+              $addToSet: { "roles.$.roles": roleName },
+              $set: { "roles.$.assignPlace": placeId }
+            }
+          );
+        } else {
+          // Add new role block
+          await fastify.mongo.db.collection("users").updateOne(
+            { _id: newAdminId },
+            {
+              $push: {
+                roles: {
+                  disasterId,
+                  roles: [roleName],
+                  assignPlace: placeId
+                }
+              }
+            }
+          );
+        }
+      }
+    }
+  };
+
   fastify.post("/postCamp", isAdmin, async (req, reply) => {
     try {
       const {
@@ -235,13 +288,32 @@ const disasterRoute = (fastify, options, done) => {
         location,
         contact,
         capacity,
-        campAdmin,
+        campAdmin, // This is the User ID of the admin
         _id,
         uid,
         name,
         status = "active",
+        // New Fields
+        nearbyHospital, // { exists: boolean, distance: number }
+        nearbyHelipad,  // { exists: boolean, distance: number }
+        friendliness,   // { oldAge: number, pregnant: number, child: number }
+        locationMap,    // { lat: number, lng: number }
+        address,        // Manual address string
       } = req.body;
+
+      let campId = _id;
+      let oldCampData = null;
+
+      // Construct GeoJSON Point if locationMap is valid
+      const geoLocation = (locationMap?.lat && locationMap?.lng)
+        ? { type: "Point", coordinates: [parseFloat(locationMap.lng), parseFloat(locationMap.lat)] }
+        : null;
+
       if (_id) {
+        // Fetch old data to check for admin change
+        oldCampData = await fastify.mongo.db.collection("camps").findOne({ _id, disasterId });
+        campId = _id;
+
         await fastify.mongo.db.collection("camps").updateOne(
           { _id, disasterId },
           {
@@ -249,20 +321,29 @@ const disasterRoute = (fastify, options, done) => {
               ...(location && { location }),
               ...(contact && { contact }),
               ...(capacity && { capacity }),
-              ...(campAdmin && { campAdmin }),
+              campAdmin, // Update the admin ID stored in Camp
               ...(name && { name }),
               ...(status && { status }),
+              ...(geoLocation && { geoLocation }), // Save GeoJSON
+
+              // New Fields Updates
+              ...(nearbyHospital && { nearbyHospital }),
+              ...(nearbyHelipad && { nearbyHelipad }),
+              ...(friendliness && { friendliness }),
+              ...(address && { address }),
+
               updatedAt: new Date(),
               updatedBy: uid,
             },
           }
         );
       } else {
+        campId = customIdGenerator("CMPT");
         if (!name || !location) {
           return reply.status(400).send({ message: "All fields are required" });
         }
         await fastify.mongo.db.collection("camps").insertOne({
-          _id: customIdGenerator("CMPT"),
+          _id: campId,
           disasterId,
           name,
           location,
@@ -270,18 +351,36 @@ const disasterRoute = (fastify, options, done) => {
           capacity,
           campAdmin,
           status,
+
+          // New Fields
+          nearbyHospital: nearbyHospital || { exists: false, distance: 0 },
+          nearbyHelipad: nearbyHelipad || { exists: false, distance: 0 },
+          friendliness: friendliness || { oldAge: 0, pregnant: 0, child: 0 },
+          locationMap: locationMap || null,
+          address: address || location, // Fallback
+
           createdBy: uid,
           createdAt: new Date(),
         });
       }
 
+      // Sync Admin Roles if campAdmin changed or is new
+      if (campAdmin) {
+        const oldAdminId = oldCampData?.campAdmin;
+        if (oldAdminId !== campAdmin) {
+          await syncAdminRole(disasterId, campId, oldAdminId, campAdmin, "campAdmin");
+        }
+      }
+
       reply
         .status(200)
-        .send({ message: "Camp created/updated", success: true });
+        .send({ message: "Camp created/updated", success: true, _id: campId });
     } catch (error) {
+      console.error(error);
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
+
   fastify.get("/getCamps", isAdmin, async (req, reply) => {
     try {
       const { disasterId } = req.query;
@@ -320,40 +419,87 @@ const disasterRoute = (fastify, options, done) => {
         name,
         status = "active",
         capacity,
+        // New Fields
+        nearbyHighway, // { exists: boolean, distance: number }
+        storage,       // { available: boolean, details: string }
+        features,      // String or Array
+        locationMap,   // { lat, lng }
+        address
       } = req.body;
+
+      let cpId = _id;
+      let oldCpData = null;
+
+      // Construct GeoJSON Point if locationMap is valid
+      const geoLocation = (locationMap?.lat && locationMap?.lng)
+        ? { type: "Point", coordinates: [parseFloat(locationMap.lng), parseFloat(locationMap.lat)] }
+        : null;
+
       if (_id) {
+        oldCpData = await fastify.mongo.db.collection("collectionPoints").findOne({ _id, disasterId });
+        cpId = _id;
+        const set = {
+          ...(location && { location }),
+          ...(contact && { contact }),
+          collectionAdmin,
+          ...(name && { name }),
+          ...(status && { status }),
+
+          // New Fields
+          ...(nearbyHighway && { nearbyHighway }),
+          ...(capacity && { capacity }),
+          ...(storage && { storage }),
+          ...(features && { features }),
+          ...(geoLocation && { geoLocation }), // Save GeoJSON
+          ...(address && { address }),
+
+          updatedAt: new Date(),
+          updatedBy: uid,
+        };
         await fastify.mongo.db.collection("collectionPoints").updateOne(
           { _id, disasterId },
           {
-            $set: {
-              ...(location && { location }),
-              ...(contact && { contact }),
-              ...(collectionAdmin && { collectionAdmin }),
-              ...(name && { name }),
-              ...(status && { status }),
-              updatedAt: new Date(),
-              updatedBy: uid,
-            },
+            $set: set
           }
         );
       } else {
+        cpId = customIdGenerator("COPT");
         await fastify.mongo.db.collection("collectionPoints").insertOne({
-          _id: customIdGenerator("COPT"),
+          _id: cpId,
           disasterId,
           location,
           capacity,
           name,
           status,
           collectionAdmin,
+
+          // New Fields
+          nearbyHighway: nearbyHighway || { exists: false, distance: 0 },
+          storage: storage || { available: false, details: "" },
+          features: features || "",
+          geoLocation: geoLocation || null, // Save GeoJSON
+          address: address || location,
+
           createdBy: uid,
           disasterId,
           createdAt: new Date(),
         });
       }
+
+      // Sync Admin Roles
+      if (collectionAdmin) {
+        const oldAdminId = oldCpData?.collectionAdmin;
+        if (oldAdminId !== collectionAdmin) {
+          await syncAdminRole(disasterId, cpId, oldAdminId, collectionAdmin, "collectionPointAdmin");
+        }
+      }
+
+
       reply
         .status(200)
-        .send({ message: "Collection Point created/updated", success: true });
+        .send({ message: "Collection Point created/updated", success: true, _id: cpId });
     } catch (error) {
+      console.error(error);
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
@@ -370,6 +516,27 @@ const disasterRoute = (fastify, options, done) => {
       reply.status(500).send({ message: "Internal Server Error" });
     }
   });
+
+  // Lookup potential admins by name/phone
+  fastify.get("/getPotentialAdmins", isAdmin, async (req, reply) => {
+    try {
+      const { search } = req.query;
+      if (!search) return reply.send([]);
+
+      const users = await fastify.mongo.db.collection("users").find({
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { phoneNumber: { $regex: search, $options: 'i' } }
+        ]
+      }).limit(10).toArray();
+
+      reply.send(users.map(u => ({ _id: u._id, name: u.name, phoneNumber: u.phoneNumber })));
+
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  });
+
   done();
 };
 export default disasterRoute;

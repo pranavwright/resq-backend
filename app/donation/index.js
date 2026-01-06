@@ -126,6 +126,19 @@ const donationRoute = (fastify, options, done) => {
     }
   );
 
+  // Haversine formula to calculate distance
+  const getDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Radius of the earth in km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
   fastify.post("/generalDonation", async (req, reply) => {
     try {
       const {
@@ -136,6 +149,7 @@ const donationRoute = (fastify, options, done) => {
         items,
         disasterId,
         confirmDate,
+        locationMap, // { lat, lng }
       } = req.body;
 
       if (
@@ -143,9 +157,31 @@ const donationRoute = (fastify, options, done) => {
         !donarEmail ||
         !items ||
         !Array.isArray(items) ||
-        items.length === 0
+        items.length === 0 ||
+        !disasterId
       ) {
         return reply.status(400).send({ message: "All fields are required" });
+      }
+
+      // 1. Find Nearest Collection Point logic (MongoDB Geospatial)
+      let nearbyCollectionPoint = null;
+      if (locationMap && locationMap.lat && locationMap.lng) {
+        try {
+          const nearest = await fastify.mongo.db.collection("collectionPoints").findOne({
+            disasterId,
+            status: 'active',
+            geoLocation: {
+              $near: {
+                $geometry: { type: "Point", coordinates: [parseFloat(locationMap.lng), parseFloat(locationMap.lat)] }
+                // Optional: $maxDistance: 50000 // 50km
+              }
+            }
+          });
+          nearbyCollectionPoint = nearest;
+        } catch (err) {
+          console.error("Geospatial Query Error:", err);
+          // Fallback or ignore if index missing (index creation is auto in postCollectionPoint now)
+        }
       }
 
       let donatedItems = [];
@@ -154,17 +190,51 @@ const donationRoute = (fastify, options, done) => {
       for (const item of items) {
         let itemIdToUse = item.itemId;
         if (!item.itemId) {
-          const newItem = await fastify.mongo.db
+          // New Item Logic - Strict Validation on Category and Unit
+          const allowedCategories = ["Food", "Medicine", "Grocery", "Machinery", "Stationery", "Clothing", "Other"];
+          const allowedUnits = ["kg", "g", "liter", "ml", "unit", "box", "packet", "sqft", "meter"];
+
+          if (!allowedCategories.includes(item.category)) {
+            return reply.status(400).send({ message: `Invalid category: ${item.category}. Allowed: ${allowedCategories.join(", ")}` });
+          }
+          if (!allowedUnits.includes(item.unit)) {
+            return reply.status(400).send({ message: `Invalid unit: ${item.unit}. Allowed: ${allowedUnits.join(", ")}` });
+          }
+
+          let newItem = await fastify.mongo.db
             .collection("inventory")
+            .findOne({
+              name: item.name,
+              category: item.category,
+              unit: item.unit,
+              disasterId,
+            });
+
+          if (newItem) {
+            itemIdToUse = newItem._id;
+            newItemIds.push(itemIdToUse);
+            continue;
+          }
+
+          newItem = await fastify.mongo.db
+            .collection("catalog_items")
             .insertOne({
               _id: customIdGenerator("ITM"),
               name: item.name,
               description: item.description,
               category: item.category,
               unit: item.unit,
-              quantity: 0,
               disasterId,
+              createdAt: new Date()
             });
+          await fastify.mongo.db.collection("point_inventory").insertOne({
+            _id: customIdGenerator('STK'),
+            itemId: newItem.insertedId,
+            quantity: 0,
+            disasterId,
+            collectionPointId: nearbyCollectionPoint._id,
+            updatedAt: new Date()
+          })
           itemIdToUse = newItem.insertedId;
           newItemIds.push(itemIdToUse);
         }
@@ -186,6 +256,8 @@ const donationRoute = (fastify, options, done) => {
         donatedAt: new Date(),
         donatedItems,
         confirmDate,
+        locationMap: locationMap || null,
+        assignedCollectionPointId: nearbyCollectionPoint ? nearbyCollectionPoint._id : null,
       });
 
       // Fetch all items that were part of the donation for the email
@@ -212,16 +284,27 @@ const donationRoute = (fastify, options, done) => {
           disasterId,
           donarPhone,
           donatedAt: new Date(),
+          collectionPoint: nearbyCollectionPoint ? {
+            name: nearbyCollectionPoint.name,
+            contact: nearbyCollectionPoint.contact,
+            location: nearbyCollectionPoint.location || nearbyCollectionPoint.address
+          } : null
         });
         console.log(`Donation request email sent to ${donarEmail}`);
       } catch (emailError) {
         console.error("Error sending donation request email:", emailError);
-        return reply
-          .status(200)
-          .send({ message: "Donation added successfully but mail did't send" });
+        // Note: we continue even if email fails
       }
 
-      reply.status(200).send({ message: "Donation added successfully" });
+      reply.status(200).send({
+        message: "Donation added successfully",
+        nearestCollectionPoint: nearbyCollectionPoint ? {
+          name: nearbyCollectionPoint.name,
+          location: nearbyCollectionPoint.location || nearbyCollectionPoint.address,
+          locationMap: nearbyCollectionPoint.locationMap,
+          contact: nearbyCollectionPoint.contact
+        } : null
+      });
     } catch (error) {
       console.error("Error processing donation:", error);
       reply.status(500).send({ message: error.message });

@@ -68,6 +68,12 @@ fastify.register(FastifyMongoDB, {
   database: process.env.DB_MODE != "DEV" ? process.env.MONGODB_DATABASE : "resQBackup",
 });
 
+fastify.addHook("onReady", async () => {
+  await fastify.mongo.db.collection("collectionPoints").createIndex({ geoLocation: "2dsphere" });
+  await fastify.mongo.db.collection("camps").createIndex({ geoLocation: "2dsphere" });
+  await fastify.mongo.db.collection("disasters").createIndex({ geoLocation: "2dsphere" });
+});
+
 fastify.addHook("onError", (request, reply, error, done) => {
   console.log(error?.message || "Some error occurred");
   reply.status(500).send({ message: error?.message || "Some error occurred" });

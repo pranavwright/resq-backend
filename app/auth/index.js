@@ -108,8 +108,9 @@ const authRoute = (fastify, options, done) => {
             }
           }
         } else {
+          isUser = { _id: customIdGenerator("USR") };
           await fastify.mongo.db.collection("users").insertOne({
-            _id: customIdGenerator("USR"),
+            _id: isUser._id,
             name,
             phoneNumber,
             roles: [
@@ -129,7 +130,7 @@ const authRoute = (fastify, options, done) => {
               { _id: assignPlace },
               {
                 $set: {
-                  campAdmin: isUser._id,
+                  campAdmin: isUser?._id,
                   contact: phoneNumber,
                 },
               }

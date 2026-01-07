@@ -67,7 +67,7 @@ async function idCard(data, disaster) {
       phone: user.phoneNumber || "N/A",
       image_url:
         user.photoUrl ||
-        "https://storage.googleapis.com/resq_users_profile/logo.jpg",
+        "https://firebasestorage.googleapis.com/v0/b/resq-452205.firebasestorage.app/o/FIAMImages%2FUntitled-1og.jpg?alt=media&token=ff7837a6-522d-41aa-ba9b-dea93a5d4a2a",
       disaster: disaster.name,
       qr_data: JSON.stringify({
         name: user.name,
@@ -97,24 +97,24 @@ async function idCard(data, disaster) {
 
   if (pdfBuffers.length > 0) {
     const mergedPdf = await PDFDocument.create();
-  
+
     for (const { front, back } of pdfBuffers) {
       const frontPdf = await PDFDocument.load(front);
       const backPdf = await PDFDocument.load(back);
-  
+
       const [frontPage] = await mergedPdf.copyPages(frontPdf, [0]);
       mergedPdf.addPage(frontPage);
-  
+
       const [backPage] = await mergedPdf.copyPages(backPdf, [0]);
       mergedPdf.addPage(backPage);
     }
-  
+
     const finalPdfBuffer = await mergedPdf.save();
     return Buffer.from(finalPdfBuffer);
   } else {
     return Buffer.from([]);
   }
-  
+
 }
 
 export { idCard, generatePdfFromHtml };

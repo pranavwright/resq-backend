@@ -68,6 +68,14 @@ fastify.register(FastifyMongoDB, {
   database: process.env.DB_MODE != "DEV" ? process.env.MONGODB_DATABASE : "resQBackup",
 });
 
+import fastifySocketIO from "fastify-socket.io";
+fastify.register(fastifySocketIO, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  },
+});
+
 fastify.addHook("onReady", async () => {
   await fastify.mongo.db.collection("collectionPoints").createIndex({ geoLocation: "2dsphere" });
   await fastify.mongo.db.collection("camps").createIndex({ geoLocation: "2dsphere" });
@@ -78,6 +86,18 @@ fastify.addHook("onError", (request, reply, error, done) => {
   console.log(error?.message || "Some error occurred");
   reply.status(500).send({ message: error?.message || "Some error occurred" });
   done();
+});
+
+fastify.ready((err) => {
+  if (err) throw err;
+  fastify.io.on("connection", (socket) => {
+    console.log("Socket Connected:", socket.id);
+
+    socket.on("join_room", (room) => {
+      console.log(`Socket ${socket.id} joined ${room}`);
+      socket.join(room);
+    });
+  });
 });
 
 fastify.addHook("onRequest", async (request, reply) => {

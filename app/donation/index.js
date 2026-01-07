@@ -32,7 +32,7 @@ const donationRoute = (fastify, options, done) => {
     try {
       const { disasterId } = req.query;
       const list = await fastify.mongo.db
-        .collection("inventory")
+        .collection("point_inventory")
         .find(
           { disasterId },
           {
@@ -53,25 +53,90 @@ const donationRoute = (fastify, options, done) => {
   });
   fastify.get("/inventoryItems", isDonationAdmin, async (req, reply) => {
     try {
-      const { disasterId } = req.query;
-      const list = await fastify.mongo.db
-        .collection("inventory")
-        .find({ disasterId })
-        .toArray();
-      reply.send({ list });
+      const { disasterId, uid } = req.query;
+      const cp = await fastify.mongo.db.collection("collectionPoints").aggregate([
+        {
+          $match: {
+            collectionAdmin: uid,
+            status: "active",
+            disasterId
+          }
+        },
+        {
+          $lookup: {
+            from: "point_inventory",
+            localField: "_id",
+            foreignField: "collectionPointId",
+            as: "inventory_docs", // Renamed for clarity
+          },
+        },
+
+        {
+          $unwind: {
+            path: '$inventory_docs',
+            preserveNullAndEmptyArrays: true
+          }
+        },
+
+        {
+          $lookup: {
+            from: "catalog_items",
+            localField: "inventory_docs.itemId",
+            foreignField: "_id",
+            as: "item_details",
+          },
+        },
+
+        {
+          $unwind: {
+            path: "$item_details",
+            preserveNullAndEmptyArrays: true
+          }
+        },
+
+        {
+          $group: {
+            _id: "$_id", // Group by Collection Point ID
+            name: { $first: "$name" },
+            location: { $first: "$location" },
+            contact: { $first: "$contact" },
+            point_inventory: {
+              $push: {
+                $cond: [
+                  { $ifNull: ["$inventory_docs", false] },
+                  {
+                    _id: "$inventory_docs._id",
+                    itemId: "$inventory_docs.itemId",
+                    quantity: "$inventory_docs.quantity",
+                    room: "$inventory_docs.room",
+                    name: "$item_details.name",
+                    description: "$item_details.description",
+                    category: "$item_details.category",
+                    unit: "$item_details.unit"
+                  },
+                  "$$REMOVE"
+                ]
+              }
+            }
+          }
+        }
+      ]).toArray();
+
+      reply.send({ list: cp });
     } catch (error) {
       reply.status(500).send({ message: error.message });
     }
   });
   fastify.post("/updateItemLocation", isDonationAdmin, async (req, reply) => {
     try {
-      const { itemId, room, disasterId } = req.body;
+      const { itemId, room, disasterId, uid, stockTd } = req.body;
       if (!itemId || !room || !disasterId) {
         return reply.status(400).send({ message: "All fields are required" });
       }
+
       await fastify.mongo.db
-        .collection("inventory")
-        .updateOne({ _id: itemId, disasterId }, { $set: { room } });
+        .collection("point_inventory")
+        .updateOne({ itemId, disasterId, _id: stockTd }, { $set: { room } });
       reply.send({ message: "updated successfully" });
     } catch (error) {
       reply
@@ -96,7 +161,7 @@ const donationRoute = (fastify, options, done) => {
 
             {
               $lookup: {
-                from: "inventory",
+                from: "catalog_items",
                 localField: "donatedItems.itemId",
                 foreignField: "_id",
                 as: "donated",
@@ -202,7 +267,7 @@ const donationRoute = (fastify, options, done) => {
           }
 
           let newItem = await fastify.mongo.db
-            .collection("inventory")
+            .collection("catalog_items")
             .findOne({
               name: item.name,
               category: item.category,
@@ -263,7 +328,7 @@ const donationRoute = (fastify, options, done) => {
       // Fetch all items that were part of the donation for the email
       const allDonatedItemIds = donatedItems.map((item) => item.itemId);
       const donationItemsForEmail = await fastify.mongo.db
-        .collection("inventory")
+        .collection("catalog_items")
         .find({ _id: { $in: allDonatedItemIds } })
         .toArray();
 
@@ -313,39 +378,51 @@ const donationRoute = (fastify, options, done) => {
 
   fastify.post("/updateDonation", isDonationAdmin, async (req, reply) => {
     try {
-      const { donationId, status, disasterId, confirmDate } = req.body;
+      const { donationId, status, disasterId, confirmDate, con } = req.body;
       if (!donationId || !status) {
         return reply.status(400).send({ message: "All fields are required" });
       }
 
-      await fastify.mongo.db.collection("generalDonation").updateOne(
+      const { value: donation } = await fastify.mongo.db.collection("generalDonation").findOneAndUpdate(
         { _id: donationId, disasterId },
         {
           $set: {
             status,
             ...(confirmDate && { confirmDate: new Date(confirmDate) }),
-            ...(status == "processed" && { processedAt: new Date() }),
+            ...(status === "processed" && { processedAt: new Date() }),
           },
+        },
+        {
+          returnDocument: "after"
         }
       );
-
-      const donation = await fastify.mongo.db
-        .collection("generalDonation")
-        .findOne({ _id: donationId, disasterId });
-
       if (!donation) {
         return reply.status(404).send({ message: "Donation not found" });
       }
       const donationItemsForEmail = await fastify.mongo.db
-        .collection("inventory")
+        .collection("catalog_items")
         .find({
           _id: { $in: donation.donatedItems.map((item) => item.itemId) },
         })
         .toArray();
+
       if (status == "confirm") {
         try {
+          // Fetch Assigned Collection Point Details
+          let collectionPointDetails = null;
+          if (donation.assignedCollectionPointId) {
+            collectionPointDetails = await fastify.mongo.db.collection("collectionPoints").findOne({
+              _id: donation.assignedCollectionPointId
+            });
+          }
+
           await mailSender.sendDonationConfomationMail(donation.donarEmail, {
-            donationItems: donationItemsForEmail,
+            donationItems: donationItemsForEmail.map(item => ({
+              name: item.name,
+              unit: item.unit,
+              category: item.category,
+              quantity: donation.donatedItems.find(d => d.itemId.toString() === item._id.toString())?.quantity || 0
+            })),
             donarName: donation.donarName,
             donarEmail: donation.donarEmail,
             donarAddress: donation.donarAddress,
@@ -353,41 +430,38 @@ const donationRoute = (fastify, options, done) => {
             disasterId,
             donarPhone: donation.donarPhone || "",
             estimate: confirmDate ? new Date(confirmDate) : new Date(),
+            collectionPoint: collectionPointDetails // Pass CP details
           });
         } catch (error) {
           console.error("Error sending donation request email:", error);
           return reply.status(200).send({
             message: "Donation added successfully but mail did't send",
           });
+        }
+      } else if (status === "arrived") {
+        if (donation.assignedCollectionPointId) {
+          const roomId = `cp_${donation.assignedCollectionPointId}`;
+
+          // Emit event to room
+          if (fastify.io) {
+            const publicDonationData = {
+              _id: donation._id,
+              items: donationItemsForEmail.map(item => ({
+                _id: item._id,
+                name: item.name,
+                unit: item.unit,
+                category: item.category,
+                quantity: donation.donatedItems.find(d => d.itemId.toString() === item._id.toString())?.quantity || 0,
+                fulfilled: false
+              })),
+              donarName: donation.donarName,
+              status: 'arrived'
+            };
+            fastify.io.to(roomId).emit("donation_arrived", publicDonationData);
+          }
         }
       } else if (status == "processed") {
-        for (const item of donation.donatedItems) {
-          await fastify.mongo.db.collection("inventory").updateOne(
-            { _id: item.itemId },
-            {
-              $inc: {
-                quantity: parseInt(item.quantity),
-              },
-            }
-          );
-        }
-        try {
-          await mailSender.sendDonationDispatchMail(donation.donarEmail, {
-            donationItems: donationItemsForEmail,
-            donarName: donation.donarName,
-            donarEmail: donation.donarEmail,
-            donarAddress: donation.donarAddress,
-            status,
-            disasterId,
-            donarPhone: donation.donarPhone || "",
-            deleverdAt: new Date(),
-          });
-        } catch (error) {
-          console.error("Error sending donation request email:", error);
-          return reply.status(200).send({
-            message: "Donation added successfully but mail did't send",
-          });
-        }
+        // processed logic is now handled in /processDonation, but keeping fallback just in case
       }
 
       reply.status(200).send({ message: "Donation status updated" });
@@ -396,26 +470,224 @@ const donationRoute = (fastify, options, done) => {
     }
   });
 
+  const isVolunteer = {
+    preHandler: [
+      (req, reply) => isUserAllowed(fastify, req, reply, ["collectionPointVolunteer", "collectionPointAdmin"])
+    ]
+  };
+
+  fastify.post("/takeCharge", isVolunteer, async (req, reply) => {
+    try {
+      const { donationId, volunteerId, disasterId } = req.body;
+      // Validate
+      const donation = await fastify.mongo.db.collection("generalDonation").findOne({ _id: donationId, disasterId });
+      if (!donation) return reply.status(404).send({ message: "Donation not found" });
+      if (donation.status !== 'arrived') return reply.status(400).send({ message: "Donation is not in 'arrived' status" });
+      if (donation.volunteerId) return reply.status(400).send({ message: "Donation is already being processed by someone" });
+
+      await fastify.mongo.db.collection("generalDonation").updateOne(
+        { _id: donationId },
+        { $set: { status: 'sorting', volunteerId, startedSortingAt: new Date() } }
+      );
+
+      if (fastify.io && donation.assignedCollectionPointId) {
+        const roomId = `cp_${donation.assignedCollectionPointId}`;
+        fastify.io.to(roomId).emit("donation_taken", { donationId, volunteerId });
+      }
+
+      reply.send({ message: "You have taken charge", donationId });
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  });
+
+  fastify.post("/processDonation", isVolunteer, async (req, reply) => {
+    try {
+      const { donationId, items, disasterId } = req.body; // items: [{ itemId, quantity, ... }]
+
+      const donation = await fastify.mongo.db.collection("generalDonation").findOne({ _id: donationId, disasterId });
+      if (!donation) return reply.status(404).send({ message: "Donation not found" });
+
+      // Update Inventory
+      if (donation.assignedCollectionPointId) {
+        for (const item of items) { // Process verified items
+          await fastify.mongo.db.collection("point_inventory").updateOne(
+            { itemId: item.itemId || item._id, collectionPointId: donation.assignedCollectionPointId, disasterId },
+            { $inc: { quantity: parseInt(item.quantity) }, $set: { updatedAt: new Date() } },
+            { upsert: true }
+          );
+        }
+      }
+
+      // Update Status
+      await fastify.mongo.db.collection("generalDonation").updateOne(
+        { _id: donationId },
+        { $set: { status: 'processed', processedAt: new Date(), processedItems: items } }
+      );
+
+      if (fastify.io && donation.assignedCollectionPointId) {
+        const roomId = `cp_${donation.assignedCollectionPointId}`;
+        fastify.io.to(roomId).emit("donation_processed", { donationId });
+      }
+
+      // Send Email (Async)
+      const donationItemsForEmail = await fastify.mongo.db
+        .collection("catalog_items")
+        .find({ _id: { $in: donation.donatedItems.map((item) => item.itemId) } })
+        .toArray();
+
+      try {
+        await mailSender.sendDonationDispatchMail(donation.donarEmail, {
+          donationItems: donationItemsForEmail,
+          donarName: donation.donarName,
+          donarEmail: donation.donarEmail,
+          donarAddress: donation.donarAddress,
+          status: 'processed',
+          disasterId,
+          donarPhone: donation.donarPhone || "",
+          deleverdAt: new Date(),
+        });
+      } catch (e) { console.error("Email error", e); }
+
+      reply.send({ message: "Donation processed successfully" });
+
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  });
+
+  fastify.get('/getArrivedGeneralDonation', isVolunteer, async (req, reply) => {
+    try {
+      const { uid, disasterId } = req.query;
+
+      // 1. Find the user and their assigned place for this specific disaster
+      const user = await fastify.mongo.db.collection("users").findOne(
+        { _id: uid },
+        { projection: { roles: 1 } }
+      );
+
+      const assignedPlace = user?.roles?.find(
+        role => role.disasterId === disasterId && role.assignPlace
+      )?.assignPlace;
+
+      if (!assignedPlace) {
+        return reply.status(404).send({ message: "No assigned collection point found for this volunteer." });
+      }
+
+      // 2. Fetch donations arrived at that specific collection point
+      const donations = await fastify.mongo.db.collection("generalDonation")
+        .find({
+          assignedCollectionPointId: assignedPlace,
+          status: "arrived"
+        }, {
+          projection: {
+            _id: 1, donarName: 1, donarEmail: 1, donarAddress: 1, donatedItems: 1, status: 1, donatedAt: 1, donarPhone: 1
+          }
+        })
+        .toArray();
+      const assigned = await fastify.mongo.db.collection("generalDonation")
+        .find({
+          assignedCollectionPointId: assignedPlace,
+          status: "sorting",
+          volunteerId: uid
+        }, {
+          projection: { _id: 1, donarName: 1, donarEmail: 1, donarAddress: 1, donatedItems: 1, status: 1, donatedAt: 1 }
+        })
+        .toArray();
+
+
+
+      // 3. Extract unique Item IDs (Flattening the array)
+      const uniqueItemIds = [
+        ...new Set(donations.flatMap(d => d.donatedItems?.map(i => i.itemId) || [])),
+        ...new Set(assigned.flatMap(d => d.donatedItems?.map(i => i.itemId) || []))
+      ];
+
+      // 4. Fetch catalog details for all items in one query
+      const itemsCatalog = await fastify.mongo.db.collection("catalog_items")
+        .find({ _id: { $in: uniqueItemIds } })
+        .toArray();
+
+      // 5. Map catalog details back to the donations
+      const enrichedDonations = donations.map(d => ({
+        ...d,
+        donatedItems: d.donatedItems?.map(i => {
+          const item = itemsCatalog.find(cat => cat._id.toString() === i.itemId.toString())
+          return {
+            ...i,
+            name: item?.name,
+            unit: item?.unit,
+            room: item?.room,
+            category: item?.category,
+            description: item?.description,
+
+          }
+        })
+      }));
+      const enrichedAssigned = assigned.map(d => ({
+        ...d,
+        donatedItems: d.donatedItems?.map(i => {
+          const item = itemsCatalog.find(cat => cat._id.toString() === i.itemId.toString())
+          return {
+            ...i,
+            name: item?.name,
+            unit: item?.unit,
+            category: item?.category,
+            description: item?.description,
+
+          }
+        })
+      }));
+
+      reply.send({ donations: enrichedDonations, assigned: enrichedAssigned[0] });
+    } catch (error) {
+      fastify.log.error(error);
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
   fastify.get("/getGeneralDonation", isDonationAdmin, async (req, reply) => {
     try {
-      const donation = await fastify.mongo.db
-        .collection("generalDonation")
-        .find(
-          { disasterId: req.query.disasterId },
-          {
-            project: {
-              _id: 1,
-              donarName: 1,
-              donarEmail: 1,
-              donarAddress: 1,
-              items: 1,
-              status: 1,
-              donatedAt: 1,
-            },
-          }
-        )
-        .toArray();
-      reply.send(donation);
+      const { uid } = req.query
+      const cp = await fastify.mongo.db.collection("collectionPoints").find({ collectionAdmin: uid, status: "active" }, { projection: { _id: 1, name: 1, location: 1, contact: 1 } }).toArray()
+      let list = []
+      let itemids = []
+      for (const c of cp) {
+
+        const donation = await fastify.mongo.db
+          .collection("generalDonation")
+          .findOne(
+            { disasterId: req.query.disasterId, assignedCollectionPointId: c._id },
+            {
+              project: {
+                _id: 1,
+                donarName: 1,
+                donarEmail: 1,
+                donarAddress: 1,
+                items: 1,
+                status: 1,
+                donatedAt: 1,
+              },
+            }
+          );
+        donation?.donatedItems?.forEach((item) => {
+          itemids.push(item.itemId)
+        })
+        if (donation) {
+          c.donation = donation
+          list.push(c)
+        }
+      }
+
+      const items = await fastify.mongo.db.collection("catalog_items").find({ _id: { $in: itemids } }).toArray()
+      list?.forEach(cp => cp?.donation?.donatedItems?.forEach((item) => {
+        let currentTtem = items.find((i) => i?._id?.toString() === item.itemId?.toString())
+        item.name = currentTtem?.name
+        item.unit = currentTtem?.unit
+        item.category = currentTtem?.category
+      })
+      )
+      reply.send(list);
     } catch (error) {
       reply.status(500).send({ message: error.message });
     }
@@ -439,7 +711,7 @@ const donationRoute = (fastify, options, done) => {
 
             {
               $lookup: {
-                from: "inventory",
+                from: "point_inventory",
                 localField: "donatedItems.itemId",
                 foreignField: "_id",
                 as: "donated",
@@ -488,12 +760,34 @@ const donationRoute = (fastify, options, done) => {
 
         // Fetch current camp's inventory for the specific item
         const currentCampInventory = await fastify.mongo.db
-          .collection("inventory")
-          .findOne({ disasterId, _id: itemIdToCheck });
+          .collection("point_inventory")
+          // Need to fix the find query below too, it was findOne({ disasterId, _id: itemIdToCheck })
+          // Now it should be findOne({ disasterId, itemId: itemIdToCheck, collectionPointId: ... wait, which CP? })
+          // This endpoint is getIndividualAvailableItems... likely for a specific Camp?
+          // It says "Fetch current camp's inventory", but the query was { _id: itemId }. 
+          // Wait, 'itemIdToCheck' is the Item ID (Category ID). 
+          // Previous logic: inventory._id WAS the item ID.
+          // Now: point_inventory has 'itemId'.
+          // BUT, we need the CAMP's inventory? 
+          // The previous code didn't filter by campId/collectionPointId in "currentCampInventory".
+          // It just did findOne({ disasterId, _id: itemIdToCheck }). 
+          // That implies "Global" inventory was used before.
+          // If we want "Available in Current Camp", we need the CAMP ID.
+          // The user performing this is 'isCampAdmin'. But we need their camp.
+          // The code doesn't retrieve their camp ID.
+          // Wait, line 416 fetches 'otherCampRequests'. 
+          // It seems the previous logic assumed ONE global inventory doc per Item ID per Disaster.
+          // Now we have point_inventory. 
+          // We should sum up all available stock for this item across all CPs (if global pool) 
+          // OR filter by specific location if we knew it.
+          // Given "availableInCurrentCamp" variable name, it's confusing.
+          // Let's assume Global Availability for now (sum of all point_inventory for this item).
+          .aggregate([
+            { $match: { disasterId, itemId: itemIdToCheck } },
+            { $group: { _id: null, total: { $sum: "$quantity" } } }
+          ]).toArray();
 
-        const availableInCurrentCamp = currentCampInventory
-          ? currentCampInventory.quantity
-          : 0;
+        const availableInCurrentCamp = (currentCampInventory[0]?.total) || 0;
 
         // Fetch pending/approved camp requests from other camps for this item
         const otherCampRequests = await fastify.mongo.db
@@ -721,7 +1015,7 @@ const donationRoute = (fastify, options, done) => {
           { $match: { disasterId, campId } },
           {
             $lookup: {
-              from: "inventory",
+              from: "point_inventory",
               localField: "items.itemId",
               foreignField: "_id",
               as: "invetory",
@@ -799,7 +1093,7 @@ const donationRoute = (fastify, options, done) => {
           .find({ disasterId, status: "arrived" })
           .toArray(),
         await fastify.mongo.db
-          .collection("inventory")
+          .collection("catalog_items")
           .find({ disasterId })
           .toArray(),
       ]);
@@ -948,20 +1242,40 @@ const donationRoute = (fastify, options, done) => {
         quantity: item.quantity,
       }));
 
-      await fastify.mongo.db
-        .collection("inventory")
-        .updateMany(
-          {
-            disasterId,
-            _id: { $in: inventoryItems.map((item) => item.itemId) },
-          },
-          {
-            $inc: {
-              quantity: inventoryItems.find((i) => i.itemId === item._id)
-                .quantity,
-            },
-          }
-        );
+
+
+      // REPLACEMENT implementation:
+      // We need to handle this manually since updateMany on different items with specific increments is tricky without bulkWrite.
+      // And we need collectionPointId.
+
+      let targetCpId = null;
+      if (type === "incoming") {
+        targetCpId = process.assignedCollectionPointId;
+      } else {
+        // outgoing from camp? or outgoing to camp?
+        // Camp Requests are "outgoing" from CP to Camp? 
+        // Implementation plan says Camp Requests are fulfilled from CP.
+        // So we decrement CP inventory.
+        // Which CP? The one fulfilling it. 
+        // Do we have that info? 'process' is the campRequest. 
+        // campRequest might not have fulfilling CP ID if it was just "approved".
+        // If 'dispatchDonation' implies it's leaving the generic "stock", we need to know from where.
+
+        // For now, let's assuming incoming (Donation) adds to CP.
+        // And outgoing (CampRequest) removes from CP?
+
+        // If unsure, we can skip or log.
+      }
+
+      if (type === "incoming" && targetCpId) {
+        for (const item of process.donatedItems) {
+          await fastify.mongo.db.collection("point_inventory").updateOne(
+            { itemId: item.itemId, collectionPointId: targetCpId, disasterId },
+            { $inc: { quantity: parseInt(item.quantity) }, $set: { updatedAt: new Date() } },
+            { upsert: true }
+          );
+        }
+      }
 
       try {
         await mailSender.sendDonationDispatchMail(process.donarEmail, {

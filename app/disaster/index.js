@@ -76,7 +76,7 @@ const disasterRoute = (fastify, options, done) => {
           },
           {
             $lookup: {
-              from: "inventory",
+              from: "catalog_items",
               localField: "_id",
               foreignField: "disasterId",
               as: "items",
@@ -441,7 +441,7 @@ const disasterRoute = (fastify, options, done) => {
         const set = {
           ...(location && { location }),
           ...(contact && { contact }),
-          collectionAdmin,
+          ...(collectionAdmin && { collectionAdmin }),
           ...(name && { name }),
           ...(status && { status }),
 

@@ -42,7 +42,7 @@ const sendEmail = async (to, subject, templatePathOrHtml, data = {}) => {
       html,
     };
 
-     await transporter.sendMail(mailOptions);
+    await transporter.sendMail(mailOptions);
     console.log(`Email sent to ${to} with subject "${subject}"`);
     return true;
   } catch (error) {
@@ -66,17 +66,34 @@ export default {
   },
 
   sendDonationConfomationMail: async (email, donation) => {
-    if(email==""){
+    if (email == "") {
       return;
     }
-    const subject = `Donation Confirmation ${
-      donation?.donarName || "Anonymous"
-    }`;
+    const subject = `Donation Confirmation ${donation?.donarName || "Anonymous"
+      }`;
     const templatePath = "../template/email/donationConfirmation.hbs";
+
+    // Construct Google Maps URL if location data exists
+    let dropLocationUrl = "#";
+    let address = "Contact Admin for location";
+
+    if (donation.collectionPoint) {
+      address = donation.collectionPoint.location || donation.collectionPoint.address || "Contact Admin";
+      if (donation.collectionPoint.locationMap && donation.collectionPoint.locationMap.lat && donation.collectionPoint.locationMap.lng) {
+        dropLocationUrl = `https://www.google.com/maps?q=${donation.collectionPoint.locationMap.lat},${donation.collectionPoint.locationMap.lng}`;
+      } else if (donation.collectionPoint.geoLocation && donation.collectionPoint.geoLocation.coordinates) {
+        // GeoJSON is [lng, lat]
+        dropLocationUrl = `https://www.google.com/maps?q=${donation.collectionPoint.geoLocation.coordinates[1]},${donation.collectionPoint.geoLocation.coordinates[0]}`;
+      }
+    }
+
     const data = {
       name: donation?.donarName || "Anonymous",
       items: donation?.donationItems,
-      donatedAt: donation.estimate=="Invalid Date"? new Date(donation.estimate).toISOString(): new Date().toISOString(),
+      donatedAt: donation.estimate == "Invalid Date" ? new Date(donation.estimate).toLocaleString() : new Date(donation.estimate).toLocaleString(), // Format date nicely
+      cpName: donation.collectionPoint ? donation.collectionPoint.name : 'Assigned Center',
+      address: address,
+      dropLocationUrl: dropLocationUrl
     };
     return sendEmail(email, subject, templatePath, data);
   },

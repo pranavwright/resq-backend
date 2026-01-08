@@ -144,6 +144,66 @@ const donationRoute = (fastify, options, done) => {
         .send({ message: error.message || "internal server error" });
     }
   });
+
+  fastify.get("/inventory/public", isDonationAdmin, async (req, reply) => {
+    try {
+      const { disasterId, excludeCpId } = req.query;
+
+      const query = { disasterId, status: 'active' };
+      if (excludeCpId) {
+        query._id = { $ne: excludeCpId };
+      }
+
+      const list = await fastify.mongo.db.collection("collectionPoints").aggregate([
+        { $match: query },
+        {
+          $lookup: {
+            from: "point_inventory",
+            localField: "_id",
+            foreignField: "collectionPointId",
+            as: "inventory_docs"
+          }
+        },
+        { $unwind: { path: "$inventory_docs", preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: "catalog_items",
+            localField: "inventory_docs.itemId",
+            foreignField: "_id",
+            as: "item_details"
+          }
+        },
+        { $unwind: { path: "$item_details", preserveNullAndEmptyArrays: true } },
+        {
+          $group: {
+            _id: "$_id",
+            name: { $first: "$name" },
+            location: { $first: "$location" },
+            contact: { $first: "$contact" },
+            inventory: {
+              $push: {
+                $cond: [
+                  { $and: [{ $ne: ["$inventory_docs", null] }, { $gt: ["$inventory_docs.quantity", 0] }] },
+                  {
+                    name: "$item_details.name",
+                    category: "$item_details.category",
+                    quantity: "$inventory_docs.quantity",
+                    unit: "$item_details.unit"
+                  },
+                  "$$REMOVE"
+                ]
+              }
+            }
+          }
+        }
+      ]).toArray();
+
+      reply.send({ list });
+
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  });
   fastify.get(
     "/generalDonationRequest",
     isDonationAdmin,

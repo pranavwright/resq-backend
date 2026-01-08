@@ -438,26 +438,47 @@ const familyRoute = (fastify, options, done) => {
       const { disasterId, campId } = req.query;
 
       const query = { disasterId };
+      // if (campId) {
+      //   query.campId = campId;
+      // }
+
+      const pipeline = [
+        {
+          $match: query,
+        },
+        {
+          $lookup: {
+            from: "members",
+            localField: "_id",
+            foreignField: "familyId",
+            as: "members",
+          },
+        },
+      ];
+
       if (campId) {
-        query.campId = campId;
+        pipeline.push({
+          $match: { "members.campId": campId }
+        });
+
+        // pipeline.push({
+        //   $set: {
+        //     members: {
+        //       $filter: {
+        //         input: "$members",
+        //         as: "m",
+        //         cond: { $eq: ["$$m.campId", campId] }
+        //       }
+        //     }
+        //   }
+        // });
       }
 
       const list = await fastify.mongo.db
         .collection("family")
-        .aggregate([
-          {
-            $match: query,
-          },
-          {
-            $lookup: {
-              from: "members",
-              localField: "_id",
-              foreignField: "familyId",
-              as: "members",
-            },
-          },
-        ])
+        .aggregate(pipeline)
         .toArray();
+
       reply.send({ list });
     } catch (error) {
       console.log(error);

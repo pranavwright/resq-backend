@@ -85,6 +85,59 @@ const attendanceRoute = (fastify, options, done) => {
         }
     });
 
+
+    fastify.get("/getAttendanceStats", isCampAdmin, async (req, reply) => {
+        try {
+            const { campId } = req.query;
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            sevenDaysAgo.setHours(0, 0, 0, 0);
+
+            const stats = await fastify.mongo.db.collection("attendance")
+                .aggregate([
+                    {
+                        $match: {
+                            campId,
+                            date: { $gte: sevenDaysAgo }
+                        }
+                    },
+                    {
+                        $sort: { date: 1 }
+                    },
+                    {
+                        $project: {
+                            date: 1,
+                            presentMorning: {
+                                $size: {
+                                    $filter: {
+                                        input: "$attendance",
+                                        as: "att",
+                                        cond: { $eq: ["$$att.morning", true] }
+                                    }
+                                }
+                            },
+                            presentEvening: {
+                                $size: {
+                                    $filter: {
+                                        input: "$attendance",
+                                        as: "att",
+                                        cond: { $eq: ["$$att.evening", true] }
+                                    }
+                                }
+                            },
+                            totalMembers: { $size: "$attendance" }
+                        }
+                    }
+                ])
+                .toArray();
+
+            reply.send({ stats });
+        } catch (error) {
+            console.error(error);
+            reply.status(500).send({ message: "Internal Server Error" });
+        }
+    });
+
     done();
 };
 

@@ -407,6 +407,61 @@ const disasterRoute = (fastify, options, done) => {
     }
   });
 
+
+  fastify.get("/myCamps", isAuthUser, async (req, reply) => {
+    try {
+      const { uid, disasterId } = req.query;
+      const list = await fastify.mongo.db
+        .collection("camps")
+        .find({ campAdmin: uid, disasterId }, { projection: { _id: 1, name: 1 } })
+        .toArray();
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
+  fastify.get("/getCampDetails", isAuthUser, async (req, reply) => {
+    try {
+      const { campId, disasterId } = req.query;
+      const camp = await fastify.mongo.db.collection("camps").findOne({ _id: campId, disasterId });
+
+      if (!camp) {
+        return reply.status(404).send({ message: "Camp not found" });
+      }
+
+      let nearbyCollectionPoints = [];
+      if (camp.geoLocation && camp.geoLocation.coordinates) {
+        try {
+          nearbyCollectionPoints = await fastify.mongo.db.collection("collectionPoints").find({
+            disasterId,
+            status: 'active',
+            geoLocation: {
+              $near: {
+                $geometry: camp.geoLocation,
+                // Optional: $maxDistance: 50000 // 50km
+              }
+            }
+          }).limit(5).toArray();
+        } catch (err) {
+          console.error("Geospatial Query Error:", err);
+          // Fallback if index missing or other error
+          nearbyCollectionPoints = await fastify.mongo.db.collection("collectionPoints")
+            .find({ disasterId, status: 'active' }).limit(5).toArray();
+        }
+      } else {
+        // Fallback if camp has no geo
+        nearbyCollectionPoints = await fastify.mongo.db.collection("collectionPoints")
+          .find({ disasterId, status: 'active' }).limit(5).toArray();
+      }
+
+      reply.send({ camp, nearbyCollectionPoints });
+    } catch (error) {
+      console.error(error);
+      reply.status(500).send({ message: "Internal Server Error" });
+    }
+  });
+
   fastify.post("/postCollectionPoint", isAdmin, async (req, reply) => {
     try {
       const {

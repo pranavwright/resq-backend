@@ -746,6 +746,19 @@ const donationRoute = (fastify, options, done) => {
     }
   });
 
+  fastify.get("/getCampRequests", isCampAdmin, async (req, reply) => {
+    try {
+      const { campId, disasterId } = req.query;
+      const list = await fastify.mongo.db.collection("campRequests")
+        .find({ campId, disasterId })
+        .sort({ requestedAt: -1 })
+        .toArray();
+      reply.send({ list });
+    } catch (error) {
+      reply.status(500).send({ message: error.message });
+    }
+  });
+
   fastify.get(
     "/allCampRequest",
     isDonationAdmin,

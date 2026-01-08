@@ -9,6 +9,7 @@ import {
   isUserAllowed,
 } from "../../middleware/authMiddleware.js";
 import { customIdGenerator } from "../../utils/idGenerator.js";
+import { neededAssessmentFamQues, neededAssessmentMemQues } from "../../configs/needAssessment.js";
 
 const disasterRoute = (fastify, options, done) => {
   const isAuthUser = {
@@ -589,6 +590,18 @@ const disasterRoute = (fastify, options, done) => {
 
     } catch (error) {
       reply.status(500).send({ message: error.message });
+    }
+  });
+
+
+  fastify.get("/getNeedAssessmentConfig", isAuthUser, async (req, reply) => {
+    try {
+      reply.send({
+        famQues: neededAssessmentFamQues,
+        memQues: neededAssessmentMemQues
+      });
+    } catch (error) {
+      reply.status(500).send({ message: "Internal Server Error" });
     }
   });
 

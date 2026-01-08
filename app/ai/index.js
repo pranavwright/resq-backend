@@ -23,15 +23,18 @@ const aiRoute = (fastify, options, done) => {
           return reply.status(400).send({ message: "Prompt is required" });
         }
 
+        const today = new Date().toISOString().split('T')[0];
+
         const systemPrompt = `
-          You are an AI that converts natural language queries into MongoDB aggregation pipelines and selects columns to display.
+          You are an AI that converts natural language queries into structured filters for a Families data table.
           
           User Query: "${prompt}"
           Schema Context: ${JSON.stringify(schema || {})}
+          Current Date: ${today}
           
           Goal:
-          1. Generate a MongoDB aggregation pipeline for the 'family' collection.
-          2. Suggest columns to display based on the query.
+          1. Generate a list of filters matching the user's intent.
+          2. Suggest columns to display.
 
           Data Structure:
           - 'family' collection (root): ward, village, rationCardNo, contactNo, houseHead, etc.
@@ -39,14 +42,22 @@ const aiRoute = (fastify, options, done) => {
           
           Output JSON ONLY with this format:
           {
-            "mongoQuery": { ... }, // The filter object for $match or a full pipeline if needed (usually just match criteria).
-            "columns": ["field1", "field2"] // Columns to show.
+            "filters": [
+              { "field": "columnKey", "operator": "contains|equals|starts_with|ends_with|gt|lt|gte|lte", "value": "someValue" }
+            ], 
+            "columns": ["field1", "field2"]
           }
           
           Rules:
-          - Return PURE JSON. No markdown formatting (no \`\`\`json).
-          - For dates/ages, use appropriate comparisons ($lt, $gt) relative to now.
-          - If fields are specific to members, ensure you filter correctly (e.g., 'members.age').
+          - Return PURE JSON. No markdown formatting.
+          - Use 'gt', 'lt', 'gte', 'lte' for numeric and date comparisons.
+          - **CRITICAL**: If user asks about AGE (e.g., "Age < 10"), you MUST convert it to 'dob' (Date of Birth) filters.
+             - Age < X  => dob > [Date X years ago from today]
+             - Age > X  => dob < [Date X years ago from today]
+             - Age = X  => dob between [Date X years ago] and [Date X+1 years ago] (or just use approximate range).
+             - Calculate the exact dates based on 'Current Date'.
+          - Use 'contains' for fuzzy text matching.
+          - 'field' must match schema keys provided.
         `;
 
         const generationConfig = {
@@ -68,7 +79,6 @@ const aiRoute = (fastify, options, done) => {
         // Cleanup markdown/text
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
-        console.log("AI Output:", text); // Debug log
 
         const jsonResponse = JSON.parse(text);
 

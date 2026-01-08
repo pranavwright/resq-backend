@@ -331,9 +331,7 @@ const familyRoute = (fastify, options, done) => {
               as: "members",
             },
           },
-          {
-            $match: query || {},
-          },
+          ...query,
         ])
         .toArray();
       reply.send({ list });

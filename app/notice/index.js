@@ -23,10 +23,10 @@ const noticeRoute = (fastify, options, done) => {
   const isAdmin = {
     preHandler: [(req, reply) => isUserAllowed(fastify, req, reply, ["admin"])],
   };
-  fastify.get("/allNotice", isAdmin, async (req, reply) => {
+  fastify.get("/allNotice", isAuthUser, async (req, reply) => {
     try {
       const { disasterId } = req.query;
-      if(!disasterId) {
+      if (!disasterId) {
         return reply.status(400).send({ message: "disasterId required" });
       }
       const list = await fastify.mongo.db
@@ -40,7 +40,7 @@ const noticeRoute = (fastify, options, done) => {
       return reply.status(500).send({ message: "Internal Server Error" });
     }
   });
-  fastify.get("/myNotice", isAdmin, async (req, reply) => {
+  fastify.get("/myNotice", isAuthUser, async (req, reply) => {
     try {
       const { disasterId, uid } = req.query;
       if (!disasterId) {
